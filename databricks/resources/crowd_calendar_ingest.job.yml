@@ -1,0 +1,21 @@
+resources:
+  jobs:
+    crowd_calendar_ingest:
+      name: crowd-calendar-ingest
+      # Daily at 6am Eastern: refreshes the last two months (forecast days become measured) and the
+      # next two (newly published park hours). Run once with backfill=true for the full history.
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: backfill
+          default: "false"
+      tasks:
+        - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/02_ingest_crowd_calendar.py
