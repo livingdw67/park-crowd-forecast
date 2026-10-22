@@ -1,0 +1,22 @@
+resources:
+  jobs:
+    wait_time_ingest:
+      name: wait-time-ingest
+      # Hourly 8am-10pm Eastern, which covers Orlando park hours. Free Edition has a daily compute
+      # quota, so this stays hourly; queue-times refreshes every ~5 minutes, finer than a daily
+      # crowd index needs. Note: development mode deploys schedules paused; unpause in the UI.
+      schedule:
+        quartz_cron_expression: "0 0 8-22 * * ?"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: park_ids
+          default: ${var.park_ids}
+      tasks:
+        - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/01_ingest_wait_times.py

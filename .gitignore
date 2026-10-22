@@ -1,0 +1,22 @@
+# Environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Credentials and Secrets
+.env
+**/.streamlit/secrets.toml
+
+# Data Files
+data/
+*.csv
+*.zip
+
+# IDE Files
+.vscode/
+.cursor/
+*.log
+
+# Databricks bundle local state
+.databricks/

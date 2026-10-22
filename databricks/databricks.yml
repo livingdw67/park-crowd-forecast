@@ -1,0 +1,26 @@
+# Databricks Asset Bundle for the theme park crowd forecast (Free Edition, serverless).
+# Deploy:  databricks bundle deploy --profile free
+# Run:     databricks bundle run wait_time_ingest --profile free
+bundle:
+  name: park-crowd-forecast
+
+variables:
+  catalog:
+    description: Unity Catalog catalog that holds the schema
+    default: workspace
+  schema:
+    description: Schema for every table and the raw-file volume
+    default: parks
+  park_ids:
+    description: queue-times.com park ids, comma-separated (Orlando - Universal Studios, Islands of Adventure, Epic Universe, Volcano Bay)
+    default: "65,64,334,67"
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-303976ab-2cd1.cloud.databricks.com
