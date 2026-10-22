@@ -1,0 +1,13 @@
+resources:
+  apps:
+    park_app:
+      # Free Edition: up to 3 apps, and each stops 24 hours after it is started or redeployed
+      name: park-crowds
+      description: Universal Orlando crowd calendar, staffing plans and what-if scenarios
+      # The bundle root, so the app gets parks_lib and the seeds along with app/ (see app.yaml)
+      source_code_path: ..
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

@@ -16,7 +16,7 @@ other days", not a headcount.
 | 1c | `raw_weather_daily` (Open-Meteo) and `calendar_features` (holidays, school breaks, events) | Live since 2026-10-22 |
 | 1d | LightGBM forecast in MLflow / Unity Catalog (`crowd_forecast`), ride-based `daily_crowd_index` | Live since 2026-10-22 |
 | 1e | Staffing optimizer (OR-Tools MILP) planning 14 days from the forecast | Live since 2026-10-22 |
-| 1f | Streamlit app: crowd calendar, staffing plan, what-if scenarios | Next |
+| 1f | Streamlit app on Databricks Apps: crowd calendar, staffing plan, what-if scenarios | Live since 2026-10-22 |
 | 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs
@@ -132,6 +132,53 @@ Halloween Horror Nights nights the day plan ends at 5pm.
 `daily-features` plans the next 14 days into `staffing_plan_summary`, `staffing_plan_shifts` and
 `staffing_plan_hourly`. Each day's plan is also replayed at the forecast plus 15 points (about one
 typical forecast error) to show what an underestimate would cost in waits and skipped guests.
+
+## App
+
+A Streamlit app on Databricks Apps ([databricks/app/](databricks/app/)), deployed by the bundle as
+`park-crowds`. Three pages:
+
+- **Crowd calendar:** the 90-day forecast per park as a calendar, next to the last 90 days of measured
+  scores and queue-times' own forecast.
+- **Staffing plan:** the published plan for a park-day: crew and planned waits by location and hour,
+  the shifts, and what the same crew faces if the day runs 15 points busier.
+- **What if:** set the crowd, hours, a worker cap, wages and wait costs, then compare three plans
+  costed the same way: the published plan, that plan on the scenario's day, and a re-plan
+  (`evaluate_plan` and `plan_staffing`). On busy days most rides already run at their maximum crew,
+  so re-planning helps less than you'd expect; the page says when that happens.
+
+The app reads the Delta tables through the SQL warehouse as its own service principal and caches
+them for an hour; nothing it shows is computed at request time except the what-if plans. Its source
+root is the bundle folder, so it ships with the same `parks_lib` and `seeds/staffing_locations.csv`
+the daily job plans from. Colours follow the brand guide's dark palettes, checked with a palette
+validator for contrast and colour-vision deficiency.
+
+Deploy and start (Free Edition stops an app 24 hours after it starts; rerun to restart):
+
+```
+cd databricks
+databricks bundle deploy --profile free
+databricks bundle run park_app --profile free
+```
+
+After the first deploy, give the app's service principal read access (its client id is in
+`databricks apps get park-crowds`):
+
+```sql
+GRANT USE CATALOG ON CATALOG workspace TO `<client id>`;
+GRANT USE SCHEMA, SELECT ON SCHEMA workspace.parks TO `<client id>`;
+```
+
+Run it locally against the workspace, from `databricks/` so the theme in `.streamlit/` applies:
+
+```
+set DATABRICKS_CONFIG_PROFILE=free
+set DATABRICKS_WAREHOUSE_ID=<warehouse id>
+..\.venv\Scripts\streamlit run app/streamlit_app.py
+```
+
+`ortools==9.11` needs protobuf 5.26, so the app pins `databricks-sdk==0.72.0`, the newest release
+that allows it ([databricks/requirements.txt](databricks/requirements.txt)).
 
 ## Local development
 

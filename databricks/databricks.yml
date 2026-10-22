@@ -14,6 +14,10 @@ variables:
   park_ids:
     description: queue-times.com park ids, comma-separated (Orlando - Universal Studios, Islands of Adventure, Epic Universe, Volcano Bay)
     default: "65,64,334,67"
+  warehouse_id:
+    description: SQL warehouse the app queries (Free Edition has one)
+    lookup:
+      warehouse: Serverless Starter Warehouse
 
 include:
   - resources/*.yml

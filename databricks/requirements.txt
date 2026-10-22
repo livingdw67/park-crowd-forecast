@@ -1,0 +1,7 @@
+# The Databricks App's Python packages (notebooks pin their own via %pip).
+# ortools 9.11 needs protobuf 5.26, which rules out databricks-sdk releases after 0.72.
+streamlit==1.66.1
+databricks-sql-connector==4.7.0
+databricks-sdk==0.72.0
+ortools==9.11.4210
+pandas==2.2.3

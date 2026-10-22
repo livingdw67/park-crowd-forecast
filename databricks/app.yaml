@@ -1,0 +1,6 @@
+# Databricks Apps entry point. The app's source root is this bundle folder, so the app ships with
+# parks_lib (src/) and the staffing seed (seeds/) the jobs use. Deployed by resources/park_app.app.yml.
+command: ["streamlit", "run", "app/streamlit_app.py"]
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse

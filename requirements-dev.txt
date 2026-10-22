@@ -1,7 +1,6 @@
 # Local development and tests (Databricks notebooks pin their own via %pip)
+-r databricks/requirements.txt
 lightgbm==4.5.0
-ortools==9.11.4210
-pandas==2.2.3
 scikit-learn==1.5.2
 python-dateutil
 pytest
