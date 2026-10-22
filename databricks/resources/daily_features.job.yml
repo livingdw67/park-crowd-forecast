@@ -3,7 +3,8 @@ resources:
     daily_features:
       name: daily-features
       # Daily at 6:30am Eastern, after the crowd calendar refresh: weather history + 16-day forecast,
-      # then the calendar features (cheap to rebuild in full).
+      # the calendar features (cheap to rebuild in full) and the ride-based crowd index, then the next
+      # 90 days of forecasts from the champion model.
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"
         timezone_id: America/New_York
@@ -20,3 +21,10 @@ resources:
         - task_key: calendar_features
           notebook_task:
             notebook_path: ../src/04_build_calendar_features.py
+        - task_key: crowd_index
+          notebook_task:
+            notebook_path: ../src/07_build_crowd_index.py
+        - task_key: score
+          depends_on: [{ task_key: weather }, { task_key: calendar_features }]
+          notebook_task:
+            notebook_path: ../src/06_score_forecast.py

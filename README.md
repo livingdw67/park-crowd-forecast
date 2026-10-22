@@ -14,8 +14,8 @@ other days", not a headcount.
 | 1a | Hourly wait-time ingest into `workspace.parks.raw_wait_times` | Live since 2026-10-22 |
 | 1b | Crowd calendar history into `workspace.parks.raw_crowd_calendar` (daily, Jul 2018 on) | Live since 2026-10-22 |
 | 1c | `raw_weather_daily` (Open-Meteo) and `calendar_features` (holidays, school breaks, events) | Live since 2026-10-22 |
-| 1d | Daily crowd index + LightGBM forecast, tracked in MLflow | Next |
-| 1e | Staffing optimizer (OR-Tools) driven by the forecast | Planned |
+| 1d | LightGBM forecast in MLflow / Unity Catalog (`crowd_forecast`), ride-based `daily_crowd_index` | Live since 2026-10-22 |
+| 1e | Staffing optimizer (OR-Tools) driven by the forecast | Next |
 | 1f | Streamlit app: crowd calendar, staffing plan, what-if scenarios | Planned |
 | 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
 
@@ -75,6 +75,39 @@ First look, Universal Studios Florida, average daily crowd score (measured days,
 
 Easter week beats Florida's own spring break: the crowd is national, not local. HHN doesn't lift
 the daytime score.
+
+## Forecast
+
+One LightGBM model for all parks predicts the daily crowd score. Backtest: for each test year,
+train on every earlier day and score that year (mean absolute error, 0-100 scale, all parks):
+
+| Method | 2023 | 2024 | 2025 | 2026 |
+|---|---|---|---|---|
+| Baseline: park x month x weekday mean | 20.4 | 17.0 | 19.2 | 24.2 |
+| Baseline: same weekday last year | 16.7 | 18.1 | 18.4 | 21.9 |
+| LightGBM: calendar | **15.9** | **12.4** | 16.2 | **18.8** |
+| LightGBM: calendar + park hours | 17.2 | 13.7 | 16.1 | 19.3 |
+| LightGBM: calendar + hours + weather | 16.5 | 13.4 | **15.9** | 18.9 |
+
+What this says:
+
+- **The target is noisy.** The score moves 14-17 points day to day at Universal Studios and Islands
+  of Adventure. With each park-year's average bias removed, the error is 11-14, close to that floor.
+  Correlation with actuals is about 0.77, and weekly averages are off by 8-13 points.
+- **Most of the rest is level shifts.** 2025 overpredicted Universal Studios by 11 points: models
+  trained before 2025 had never seen Epic Universe open. Epic itself is overpredicted by 20 in 2026,
+  as its score fell sharply after its opening year.
+- **Hours and weather add nothing measurable**, so production uses calendar features only, which
+  also works at any horizon. Weighting recent days more (half-lives of 180 to 730 days) didn't help.
+
+`train-forecast` (Mondays) reruns the backtest into MLflow, retrains on all days, and registers
+`workspace.parks.crowd_forecast` with the `champion` alias. `daily-features` scores the next 90 days
+into `crowd_forecast` (latest) and `crowd_forecast_history` (every run, for tracking accuracy later),
+next to queue-times' own forecast where they publish one.
+
+`daily_crowd_index` is the transparent alternative: average posted wait across open rides between
+11am and 5pm, without single-rider lines and Halloween Horror Nights houses. It needs a few weeks of
+hourly data before it can be compared with the queue-times score.
 
 ## Databricks
 

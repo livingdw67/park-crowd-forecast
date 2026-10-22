@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    train_forecast:
+      name: train-forecast
+      # Weekly retrain (Monday 7am Eastern), then a fresh score with the new champion.
+      # Daily scoring runs in daily-features.
+      schedule:
+        quartz_cron_expression: "0 0 7 ? * MON"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+      tasks:
+        - task_key: train
+          notebook_task:
+            notebook_path: ../src/05_train_forecast.py
+        - task_key: score
+          depends_on: [{ task_key: train }]
+          notebook_task:
+            notebook_path: ../src/06_score_forecast.py
