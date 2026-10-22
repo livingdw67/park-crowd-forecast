@@ -1,0 +1,18 @@
+park_id,location,kind,daily_share,guests_per_crew_hour,min_crew,max_crew
+65,Harry Potter and the Escape from Gringotts,ride,0.656,110,8,16
+65,Revenge of the Mummy,ride,0.581,130,6,12
+65,Hogwarts Express - King's Cross Station,ride,0.525,125,6,12
+65,Despicable Me Minion Mayhem,ride,0.551,160,5,10
+65,MEN IN BLACK Alien Attack,ride,0.554,170,5,10
+65,Leaky Cauldron,food,0.1,45,3,18
+65,Minion Cafe,food,0.08,45,2,14
+64,Hagrid's Magical Creatures Motorbike Adventure,ride,0.532,95,8,14
+64,Jurassic World VelociCoaster,ride,0.553,115,7,14
+64,The Amazing Adventures of Spider-Man,ride,0.537,140,6,12
+64,Harry Potter and the Forbidden Journey,ride,0.537,140,6,12
+64,Three Broomsticks,food,0.12,45,3,18
+334,Mario Kart: Bowser's Challenge,ride,0.553,105,8,14
+334,Harry Potter and the Battle at the Ministry,ride,0.806,115,8,14
+334,Stardust Racers,ride,0.446,110,6,12
+334,Monsters Unchained: The Frankenstein Experiment,ride,0.483,125,6,12
+334,The Burning Blade Tavern,food,0.12,45,3,18

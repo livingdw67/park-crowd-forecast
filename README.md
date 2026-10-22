@@ -15,8 +15,8 @@ other days", not a headcount.
 | 1b | Crowd calendar history into `workspace.parks.raw_crowd_calendar` (daily, Jul 2018 on) | Live since 2026-10-22 |
 | 1c | `raw_weather_daily` (Open-Meteo) and `calendar_features` (holidays, school breaks, events) | Live since 2026-10-22 |
 | 1d | LightGBM forecast in MLflow / Unity Catalog (`crowd_forecast`), ride-based `daily_crowd_index` | Live since 2026-10-22 |
-| 1e | Staffing optimizer (OR-Tools) driven by the forecast | Next |
-| 1f | Streamlit app: crowd calendar, staffing plan, what-if scenarios | Planned |
+| 1e | Staffing optimizer (OR-Tools MILP) planning 14 days from the forecast | Live since 2026-10-22 |
+| 1f | Streamlit app: crowd calendar, staffing plan, what-if scenarios | Next |
 | 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs
@@ -108,6 +108,30 @@ next to queue-times' own forecast where they publish one.
 `daily_crowd_index` is the transparent alternative: average posted wait across open rides between
 11am and 5pm, without single-rider lines and Halloween Horror Nights houses. It needs a few weeks of
 hourly data before it can be compared with the queue-times score.
+
+## Staffing optimizer
+
+[staffing.py](databricks/src/parks_lib/staffing.py) is a mixed-integer program (OR-Tools, SCIP;
+each park-day solves in well under a second). For every ride and food outlet it picks how many
+workers start each shift (8-hour shifts every 2 hours, 4-hour shifts every hour), minimizing wages
+plus a cost per guest-hour in line plus a penalty per guest-hour over a 60-minute target. Rules:
+each location's crew stays between its minimum and maximum, guests served per hour are capped by
+crew, lines carry from hour to hour, an optional park-wide headcount cap forces trade-offs, and
+guests skip long lines (the share who skip rises with the line, everyone at a 4-hour line), which
+keeps lines bounded and gives a "guests who skipped a ride" measure.
+
+**Demand is assumed, not measured.** The crowd score maps to attendance per open hour (25,000 to
+50,000 guests on a 12-hour day), each location sees a share of guests
+([staffing_locations.csv](databricks/seeds/staffing_locations.csv)), and arrivals peak early
+afternoon. Ride shares were calibrated by bisection so the plan's 11am-5pm waits match observed
+posted waits on 2026-10-22, one day of data. Recalibrating over a few weeks of `wait_times_clean`
+is the next step for this part. Known gaps: posted waits run higher than actual ones; long
+operating days spread the arrival peak, which overstates waits at Islands of Adventure; on
+Halloween Horror Nights nights the day plan ends at 5pm.
+
+`daily-features` plans the next 14 days into `staffing_plan_summary`, `staffing_plan_shifts` and
+`staffing_plan_hourly`. Each day's plan is also replayed at the forecast plus 15 points (about one
+typical forecast error) to show what an underestimate would cost in waits and skipped guests.
 
 ## Databricks
 

@@ -28,3 +28,7 @@ resources:
           depends_on: [{ task_key: weather }, { task_key: calendar_features }]
           notebook_task:
             notebook_path: ../src/06_score_forecast.py
+        - task_key: staffing
+          depends_on: [{ task_key: score }]
+          notebook_task:
+            notebook_path: ../src/08_plan_staffing.py
