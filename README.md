@@ -13,8 +13,8 @@ other days", not a headcount.
 |---|---|---|
 | 1a | Hourly wait-time ingest into `workspace.parks.raw_wait_times` | Live since 2026-10-22 |
 | 1b | Crowd calendar history into `workspace.parks.raw_crowd_calendar` (daily, Jul 2018 on) | Live since 2026-10-22 |
-| 1c | Weather, holidays, school calendars, Halloween Horror Nights and other event dates | Next |
-| 1d | Daily crowd index + LightGBM forecast, tracked in MLflow | Planned |
+| 1c | `raw_weather_daily` (Open-Meteo) and `calendar_features` (holidays, school breaks, events) | Live since 2026-10-22 |
+| 1d | Daily crowd index + LightGBM forecast, tracked in MLflow | Next |
 | 1e | Staffing optimizer (OR-Tools) driven by the forecast | Planned |
 | 1f | Streamlit app: crowd calendar, staffing plan, what-if scenarios | Planned |
 | 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
@@ -41,6 +41,41 @@ Caveats found so far:
 - Days before tracking started and future days carry queue-times' forecast (`is_forecast`); days
   they don't forecast have park hours and no score.
 
+## Features
+
+Everything in `calendar_features` is known ahead of time, so it can be built for any future date.
+
+- **Holidays:** US federal holidays plus Easter, long weekends, days to the next and since the last.
+- **School breaks:** rule-based windows ([calendar.py](databricks/src/parks_lib/calendar.py)) rather
+  than one district's calendar, since visitors come from everywhere. Checked against TouringPlans'
+  Florida in-session rates for 2015-2021: on weekdays flagged Florida summer, winter break or
+  Thanksgiving week, 6-20% of Florida students were in school, against 92.5% on unflagged weekdays.
+  Florida spring break is mid-March, not Easter (71% still in school during Easter week), so it has
+  its own window.
+- **Events:** [seeds/events.csv](databricks/seeds/events.csv) lists Halloween Horror Nights runs,
+  the COVID closure and Epic Universe's opening, with a source for each row.
+- **Weather:** Open-Meteo (CC BY 4.0) observed history from 2018 plus a 16-day forecast. Beyond
+  16 days there is no weather row.
+
+First look, Universal Studios Florida, average daily crowd score (measured days, 2018-2026):
+
+| Days | Avg score | Days |
+|---|---|---|
+| All | 50.8 | 2,932 |
+| Weekends | 58.4 | 839 |
+| Easter week | 84.3 | 70 |
+| Winter break | 81.8 | 148 |
+| Thanksgiving week | 74.8 | 72 |
+| Holiday weekends | 73.1 | 188 |
+| Florida spring break window | 67.7 | 121 |
+| Halloween Horror Nights season | 40.0 | 476 |
+| September-October, no HHN | 42.9 | 82 |
+| 1+ inch of rain | 43.4 | 90 |
+| Since Epic Universe opened | 42.7 | 518 |
+
+Easter week beats Florida's own spring break: the crowd is national, not local. HHN doesn't lift
+the daytime score.
+
 ## Databricks
 
 The bundle is in [databricks/](databricks/). Free Edition, serverless only.
@@ -56,6 +91,8 @@ Run the crowd calendar backfill once (later daily runs refresh two months back a
 ```
 databricks bundle run crowd_calendar_ingest --profile free --params backfill=true
 ```
+
+The `daily-features` job (6:30am Eastern) refreshes weather and rebuilds `calendar_features`.
 
 The `wait-time-ingest` job runs hourly 8am-10pm Eastern. Each run saves the raw JSON to the
 `raw_files` volume and merges parsed rows into `raw_wait_times`, keyed on ride and `last_updated`.

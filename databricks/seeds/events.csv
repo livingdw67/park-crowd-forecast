@@ -1,0 +1,11 @@
+event,park_id,start_date,end_date,source
+hhn,65,2018-09-14,2018-11-03,"Opening: attractionsmagazine.com HHN opening-night list; dates: halloweenhorrornights.fandom.com HHN 28"
+hhn,65,2019-09-06,2019-11-02,"Universal announcement via fox35orlando.com, 2018-12"
+hhn,65,2021-09-03,2021-10-31,"Opening: attractionsmagazine.com list; closing night unverified"
+hhn,65,2022-09-02,2022-10-31,"attractionsmagazine.com, 43 nights"
+hhn,65,2023-09-01,2023-11-04,"cbsnews.com, 48 nights (run extended from Oct 31)"
+hhn,65,2024-08-30,2024-11-03,"Opening: attractionsmagazine.com list; 48 nights (wftv.com)"
+hhn,65,2025-08-29,2025-11-02,"en.wikipedia.org Universal's Halloween Horror Nights"
+hhn,65,2026-08-28,2026-11-01,"attractionsmagazine.com / themeparkinsider.com, 49 nights"
+covid_closure,,2020-03-16,2020-06-04,"Universal Orlando closed 2020-03-16 and reopened to the public 2020-06-05"
+epic_universe_open,,2025-05-22,2099-12-31,"Epic Universe opening day 2025-05-22"

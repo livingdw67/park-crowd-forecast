@@ -1,0 +1,22 @@
+resources:
+  jobs:
+    daily_features:
+      name: daily-features
+      # Daily at 6:30am Eastern, after the crowd calendar refresh: weather history + 16-day forecast,
+      # then the calendar features (cheap to rebuild in full).
+      schedule:
+        quartz_cron_expression: "0 30 6 * * ?"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+      tasks:
+        - task_key: weather
+          notebook_task:
+            notebook_path: ../src/03_ingest_weather.py
+        - task_key: calendar_features
+          notebook_task:
+            notebook_path: ../src/04_build_calendar_features.py

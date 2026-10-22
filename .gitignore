@@ -11,6 +11,8 @@ __pycache__/
 # Data Files
 data/
 *.csv
+# Hand-checked seed tables (events with sources) are committed
+!databricks/seeds/*.csv
 *.zip
 
 # IDE Files
