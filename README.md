@@ -133,6 +133,14 @@ Halloween Horror Nights nights the day plan ends at 5pm.
 `staffing_plan_hourly`. Each day's plan is also replayed at the forecast plus 15 points (about one
 typical forecast error) to show what an underestimate would cost in waits and skipped guests.
 
+## Local development
+
+```
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest -q tests
+```
+
 ## Databricks
 
 The bundle is in [databricks/](databricks/). Free Edition, serverless only.
