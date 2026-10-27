@@ -194,7 +194,7 @@ What this says:
 ## App
 
 A Streamlit app on Databricks Apps ([databricks/app/](databricks/app/)), deployed by the bundle as
-`park-crowds`. Three pages:
+`park-crowds`. Four pages:
 
 - **Crowd calendar:** the 90-day forecast per park as a calendar, next to the last 90 days of measured
   scores and queue-times' own forecast.
@@ -204,6 +204,10 @@ A Streamlit app on Databricks Apps ([databricks/app/](databricks/app/)), deploye
   costed the same way: the published plan, that plan on the scenario's day, and a re-plan
   (`evaluate_plan` and `plan_staffing`). On busy days most rides already run at their maximum crew,
   so re-planning helps less than you'd expect; the page says when that happens.
+- **Epic Universe impact:** the impact study for Universal Studios, Islands of Adventure or both:
+  actual monthly crowds against the no-Epic estimate, the park's effect beside every placebo park's,
+  the fake-2024 check, and the other Orlando parks' (inconclusive) results. Method and comparison
+  group are selectable. Cached for six hours; the study reruns weekly.
 
 The app reads the Delta tables through the SQL warehouse as its own service principal and caches
 them for an hour; nothing it shows is computed at request time except the what-if plans. Its source

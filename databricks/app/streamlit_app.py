@@ -1,4 +1,5 @@
-"""Park crowd forecast app (Databricks Apps): crowd calendar, staffing plans and what-if scenarios.
+"""Park crowd forecast app (Databricks Apps): crowd calendar, staffing plans, what-if scenarios and
+the Epic Universe impact study.
 
 Runs from the bundle root (databricks/), so the theme in .streamlit/ applies and the app shares
 parks_lib and the seeds with the jobs. Locally: see "App" in the README.
@@ -21,6 +22,7 @@ page = st.navigation([
     st.Page("app_pages/crowd_calendar.py", title="Crowd calendar", icon=":material/calendar_month:"),
     st.Page("app_pages/staffing_plan.py", title="Staffing plan", icon=":material/groups:"),
     st.Page("app_pages/what_if.py", title="What if", icon=":material/tune:"),
+    st.Page("app_pages/epic_impact.py", title="Epic Universe impact", icon=":material/science:"),
 ], position="top")
 
 st.title("Universal Orlando crowd forecast")

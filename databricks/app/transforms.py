@@ -1,11 +1,21 @@
 """Pandas helpers behind the pages, kept free of Streamlit so they can be unit-tested."""
 
+import json
+
 import pandas as pd
 
 from parks_lib.staffing import Plan
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 TREND_SERIES = ["Forecast", "Queue-times forecast", "Measured"]
+
+# Epic Universe impact study: the choices the page offers, mapped to the study's stored keys
+EPIC_OPENING = pd.Timestamp("2025-05-22")
+IMPACT_SERIES = ["Actual", "Without Epic (estimated)"]
+IMPACT_UNITS = {"Universal Studios Florida": 65, "Islands of Adventure": 64, "Both parks, averaged": 6564}
+IMPACT_METHODS = {"Synthetic control": "synthetic_control", "Difference-in-differences": "diff_in_diff"}
+IMPACT_GROUPS = {"Seven parks outside Florida": "main", "Without the Disneyland parks": "without_disneyland",
+                 "Plus Busch Gardens Tampa": "with_busch_gardens_tampa"}
 
 
 def hour_label(hour):
@@ -86,3 +96,29 @@ def at_max_crew(hourly, locations):
 def location_order(locations):
     """Rides first, then food, busiest first within each: the order the heatmaps list them in."""
     return locations.sort_values(["kind", "daily_share"], ascending=[False, False])["location"].tolist()
+
+
+def impact_row(summary, park_id, method, variant):
+    """The study's summary row for one park, method and comparison group (None if it wasn't run)."""
+    rows = summary[(summary["park_id"] == park_id) & (summary["method"] == method) & (summary["variant"] == variant)]
+    return rows.iloc[0] if len(rows) else None
+
+
+def impact_frame(gaps, park_id, method, variant):
+    """Long frame for the impact chart: the park's actual monthly score and the no-Epic estimate."""
+    g = gaps[(gaps["park_id"] == park_id) & (gaps["method"] == method) & (gaps["variant"] == variant)]
+    parts = [g.assign(series=IMPACT_SERIES[0], value=g["actual"]), g.assign(series=IMPACT_SERIES[1], value=g["counterfactual"])]
+    return pd.concat(parts, ignore_index=True)[["month", "series", "value"]].dropna().sort_values("month")
+
+
+def placebo_frame(row):
+    """The park's effect beside each comparison park's effect when it pretends to be the treated one."""
+    placebos = [(name, effect, False) for name, effect in json.loads(row["placebo_effects"]).items()]
+    frame = pd.DataFrame(placebos + [(row["park"], row["effect_points"], True)], columns=["park", "effect", "is_treated"])
+    return frame.sort_values("effect", ignore_index=True)
+
+
+def as_large_as(row):
+    """How many placebo parks moved at least as much as the park: the p-value as a count, (1 + k) / (n + 1)."""
+    n = int(row["n_donors"])
+    return round(row["p_value_effect"] * (n + 1)) - 1, n

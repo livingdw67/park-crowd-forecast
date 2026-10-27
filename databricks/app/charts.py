@@ -8,7 +8,7 @@ monotone scale. A series keeps its slot on every chart, and amber marks only tod
 import altair as alt
 import pandas as pd
 
-from transforms import TREND_SERIES, WEEKDAYS, hour_label
+from transforms import IMPACT_SERIES, TREND_SERIES, WEEKDAYS, hour_label
 
 SURFACE = "#0e1a2b"
 TEXT = "#f2f5f9"
@@ -18,14 +18,17 @@ SLOTS = ["#26a59f", "#c8820f", "#7c80ea"]
 SERIES_COLORS = {  # entity -> slot, the same on every chart
     "Forecast": SLOTS[0], "Queue-times forecast": SLOTS[1], "Measured": SLOTS[2],
     "Published plan": SLOTS[0], "Published plan, scenario crowd": SLOTS[1], "Re-planned": SLOTS[2],
+    # Impact study: the observed score wears the measured slot, the model's estimate the forecast slot
+    "Actual": SLOTS[2], "Without Epic (estimated)": SLOTS[0],
 }
+CONTEXT = "#6f86a3"  # the theme's grey, for marks that are background to the one in a slot
 RAMP = ["#075957", "#007370", "#248b88", "#43a4a0", "#5ebdb9", "#79d7d3"]
 DARK_TEXT_FROM = 0.45  # share of the ramp's domain past which navy text out-contrasts light text
 HOUR_LABELS = "(datum.value % 12 || 12) + (datum.value % 24 < 12 ? 'am' : 'pm')"  # Vega twin of hour_label
 DATE_FORMAT = "%a %b %-d"
 
 
-def lines(frame, x, y_title, series, *, hourly=False, y_domain=None, height=300):
+def lines(frame, x, y_title, series, *, hourly=False, y_domain=None, height=300, date_format=DATE_FORMAT):
     """Lines per series with a hover rule and a tooltip listing every series at that x.
 
     `frame` is long: the x column, `series` and `value`. `hourly` x values are hours of the day.
@@ -43,7 +46,7 @@ def lines(frame, x, y_title, series, *, hourly=False, y_domain=None, height=300)
         wide["label"] = wide[field].map(hour_label)
         tooltip = [alt.Tooltip("label:N", title="Hour")]
     else:
-        tooltip = [alt.Tooltip(x, title="Date", format=DATE_FORMAT)]
+        tooltip = [alt.Tooltip(x, title="Date", format=date_format)]
     tooltip += [alt.Tooltip(field=s, type="quantitative", format=",.0f") for s in series if s in wide]
     rule = (alt.Chart(wide).mark_rule(color=SUBTEXT, strokeWidth=1)
             .encode(x=x_enc, opacity=alt.when(hover).then(alt.value(0.5)).otherwise(alt.value(0)), tooltip=tooltip)
@@ -109,3 +112,30 @@ def location_heatmap(hourly, field, title, order):
                     color=alt.Color(f"{field}:Q", title=title, scale=alt.Scale(domain=[0, top], range=RAMP),
                                     legend=alt.Legend(orient="right", gradientLength=140)))
             .properties(height=40 * len(order)))
+
+
+def impact(frame, opening):
+    """Actual monthly crowd score against the no-Epic estimate, with the opening marked in amber."""
+    chart = lines(frame, "month:T", "Crowd score, monthly average", IMPACT_SERIES, y_domain=[0, 100],
+                  date_format="%b %Y")
+    marker = pd.DataFrame({"month": [opening], "label": ["Epic opens"]})
+    rule = alt.Chart(marker).mark_rule(color=HIGHLIGHT, strokeWidth=1.5).encode(x="month:T")
+    text = (alt.Chart(marker).mark_text(align="left", baseline="top", dx=4, y=2, color=SUBTEXT, fontSize=12)
+            .encode(x="month:T", text="label:N"))
+    return alt.layer(chart, rule, text)
+
+
+def placebo_bars(frame):
+    """Each park's estimated effect from zero; the studied park in teal, the placebo parks in grey."""
+    # An explicit order: a sort by field doesn't survive layering with the label and zero rule
+    y = alt.Y("park:N", title=None, sort=frame.sort_values("effect")["park"].tolist(),
+              axis=alt.Axis(labelLimit=320, ticks=False, domain=False))
+    x = alt.X("effect:Q", title="Change after the opening, crowd score points")
+    tooltip = [alt.Tooltip("park:N", title="Park"), alt.Tooltip("effect:Q", title="Change, points", format="+.1f")]
+    base = alt.Chart(frame).encode(x=x, y=y, tooltip=tooltip)
+    bars = base.mark_bar(cornerRadiusEnd=4, height=18).encode(
+        color=alt.when(alt.datum.is_treated).then(alt.value(SLOTS[0])).otherwise(alt.value(CONTEXT)))
+    label = (alt.Chart(frame[frame["is_treated"]]).encode(x=x, y=y, text=alt.Text("effect:Q", format="+.1f"))
+             .mark_text(align="right", dx=-6, color=TEXT, fontSize=12))
+    zero = alt.Chart(pd.DataFrame({"effect": [0]})).mark_rule(color=SUBTEXT, strokeWidth=1).encode(x="effect:Q")
+    return alt.layer(bars, zero, label).properties(height=30 * len(frame))

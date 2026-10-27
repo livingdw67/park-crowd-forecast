@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -87,16 +88,42 @@ def frames():
             "shifts": pd.DataFrame(shifts), "hourly": pd.DataFrame(hourly)}
 
 
+@pytest.fixture(scope="module")
+def impact():
+    """Small stand-in for the impact study's tables: every park, method and variant the page offers."""
+    months = pd.date_range("2022-01-01", "2026-09-01", freq="MS")
+    summary, gaps = [], []
+    units = [(65, "Universal Studios Florida", "treated"), (64, "Islands of Adventure", "treated"),
+             (6564, "Universal Studios + Islands of Adventure (average)", "treated"), (6, "Magic Kingdom", "orlando")]
+    variants = ["main", "without_disneyland", "with_busch_gardens_tampa", "placebo_opening_2024_05"]
+    for park_id, name, role in units:
+        for variant in variants if role == "treated" else ["main"]:
+            for method in ("diff_in_diff", "synthetic_control"):
+                summary.append({"park_id": park_id, "park": name, "role": role, "variant": variant, "method": method,
+                                "effect_points": -15.0, "pre_mean_crowd": 60.0, "effect_pct": -25.0,
+                                "pre_rmspe": 3.0, "rmspe_ratio": 4.0, "p_value_effect": 0.25, "p_value_ratio": 0.125,
+                                "placebo_effects": json.dumps({"Disneyland": -21.0, "Knott's Berry Farm": 0.7, "Legoland California": 8.5}),
+                                "n_donors": 7, "weights": json.dumps({"Legoland California": 0.8, "Disneyland": 0.2})})
+                for m in months:
+                    after = m >= pd.Timestamp("2025-06-01")
+                    gaps.append({"park_id": park_id, "park": name, "variant": variant, "method": method, "month": m,
+                                 "period": "after" if after else "before", "actual": 45.0 if after else 60.0,
+                                 "counterfactual": 60.0, "gap": -15.0 if after else 0.0})
+    return {"summary": pd.DataFrame(summary), "gaps": pd.DataFrame(gaps)}
+
+
 @pytest.fixture
-def app(frames, monkeypatch):
+def app(frames, impact, monkeypatch):
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setenv("DATABRICKS_WAREHOUSE_ID", "test")
     monkeypatch.setattr(park_data, "load", lambda: frames)
+    monkeypatch.setattr(park_data, "load_impact", lambda: impact)
     return AppTest.from_file("../databricks/app/streamlit_app.py", default_timeout=60).run()
 
 
-@pytest.mark.parametrize("page", ["app_pages/crowd_calendar.py", "app_pages/staffing_plan.py", "app_pages/what_if.py"])
+@pytest.mark.parametrize("page", ["app_pages/crowd_calendar.py", "app_pages/staffing_plan.py", "app_pages/what_if.py",
+                                  "app_pages/epic_impact.py"])
 def test_pages_render(app, page):
     if page != "app_pages/crowd_calendar.py":
         app.switch_page(page).run()
@@ -118,3 +145,33 @@ def test_what_if_warns_when_the_worker_cap_is_too_low(app):
     app.form_submit_button[0].click().run()
     assert not app.exception
     assert any("worker cap" in w.value for w in app.warning)
+
+
+def test_impact_page_follows_the_chosen_park_and_method(app):
+    app.switch_page("app_pages/epic_impact.py").run()
+    app.segmented_control(key="impact_park").set_value("Islands of Adventure").run()
+    app.segmented_control(key="impact_method").set_value("Difference-in-differences").run()
+    app.selectbox(key="impact_group").set_value("Without the Disneyland parks").run()
+    assert not app.exception
+    assert app.metric[2].value == "1 of 7"
+
+
+def test_placebo_frame_flags_the_studied_park_and_sorts_by_effect(impact):
+    row = transforms.impact_row(impact["summary"], 65, "synthetic_control", "main")
+    frame = transforms.placebo_frame(row)
+    assert frame["effect"].is_monotonic_increasing
+    assert frame.loc[frame["is_treated"], "park"].item() == "Universal Studios Florida"
+    assert len(frame) == 4
+
+
+def test_as_large_as_turns_the_p_value_into_a_count(impact):
+    row = transforms.impact_row(impact["summary"], 65, "synthetic_control", "main")
+    assert transforms.as_large_as(row) == (1, 7)  # (1 + 1) / 8 = 0.25
+    assert transforms.as_large_as(row.copy().replace({0.25: 0.125})) == (0, 7)
+
+
+def test_impact_frame_has_actual_and_estimate_per_month(impact):
+    frame = transforms.impact_frame(impact["gaps"], 64, "diff_in_diff", "main")
+    assert set(frame["series"]) == set(transforms.IMPACT_SERIES)
+    assert frame.groupby("series").size().eq(57).all()
+    assert transforms.impact_row(impact["summary"], 6, "diff_in_diff", "without_disneyland") is None

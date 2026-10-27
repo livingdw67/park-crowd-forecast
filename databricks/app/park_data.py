@@ -59,6 +59,14 @@ def load():
     return frames
 
 
+@st.cache_data(ttl="6h", show_spinner="Loading the Epic Universe impact study...")
+def load_impact():
+    """The Epic Universe impact study's results. The comparison-calendar-ingest job reruns it weekly."""
+    summary, gaps = query(f"SELECT * FROM {SCHEMA}.epic_impact_summary", f"SELECT * FROM {SCHEMA}.epic_impact_gaps")
+    gaps["month"] = pd.to_datetime(gaps["month"])
+    return {"summary": summary, "gaps": gaps}
+
+
 @st.cache_data
 def load_locations():
     """Rides and food outlets the optimizer staffs: the same seed the daily-features job plans from."""
