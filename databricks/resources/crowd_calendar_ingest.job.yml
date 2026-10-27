@@ -19,3 +19,31 @@ resources:
         - task_key: ingest
           notebook_task:
             notebook_path: ../src/02_ingest_crowd_calendar.py
+            base_parameters:
+              park_group: universal
+
+    comparison_calendar_ingest:
+      name: comparison-calendar-ingest
+      # Weekly (Monday 5am Eastern): crowd calendars for the comparison parks in seeds/parks.csv,
+      # then the Epic Universe impact study. Weekly is enough for that and keeps compute low.
+      schedule:
+        quartz_cron_expression: "0 0 5 ? * MON"
+        timezone_id: America/New_York
+        pause_status: UNPAUSED
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: backfill
+          default: "false"
+      tasks:
+        - task_key: ingest
+          notebook_task:
+            notebook_path: ../src/02_ingest_crowd_calendar.py
+            base_parameters:
+              park_group: comparison
+        - task_key: impact_study
+          depends_on: [{ task_key: ingest }]
+          notebook_task:
+            notebook_path: ../src/09_epic_impact_study.py

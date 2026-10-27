@@ -17,6 +17,7 @@ other days", not a headcount.
 | 1d | LightGBM forecast in MLflow / Unity Catalog (`crowd_forecast`), ride-based `daily_crowd_index` | Live since 2026-10-22 |
 | 1e | Staffing optimizer (OR-Tools MILP) planning 14 days from the forecast | Live since 2026-10-22 |
 | 1f | Streamlit app on Databricks Apps: crowd calendar, staffing plan, what-if scenarios | Live since 2026-10-22 |
+| 1g | Epic Universe impact study: difference-in-differences and synthetic control with placebo tests | Live since 2026-10-27 |
 | 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs
@@ -133,6 +134,63 @@ Halloween Horror Nights nights the day plan ends at 5pm.
 `staffing_plan_hourly`. Each day's plan is also replayed at the forecast plus 15 points (about one
 typical forecast error) to show what an underestimate would cost in waits and skipped guests.
 
+## Epic Universe impact study
+
+**Question:** Epic Universe opened on 2025-05-22. Did it pull crowds from Universal's two older
+Orlando parks, and from Disney World and the other Orlando parks?
+
+**Design.** A before/after comparison alone can't separate Epic from everything else that changed
+(the economy, travel trends, weather). So each park is compared with parks Epic could not have
+affected: seven year-round parks outside Florida (Disneyland, Disney California Adventure, Universal
+Studios Hollywood, Knott's Berry Farm, Legoland California, SeaWorld San Diego, Six Flags Magic
+Mountain), with their crowd calendars scraped the same way ([seeds/parks.csv](databricks/seeds/parks.csv)).
+
+- Monthly average crowd score per park. Each park's own seasonal pattern (its pre-opening average for
+  that calendar month) is removed, since Orlando and California parks peak at different times.
+- Before: January 2022 (the California parks' COVID limits had ended) to April 2025. May 2025 is
+  left out as the opening month. After: June 2025 to September 2026.
+- **Difference-in-differences:** the change at the Orlando park minus the change at the comparison
+  parks' simple average.
+- **Synthetic control:** the weighted mix of comparison parks (weights >= 0, summing to 1) that best
+  tracked the park before the opening stands in for "the park without Epic" afterwards.
+- **Checks:** every comparison park rerun as a placebo (an effect as large as the real one should be
+  rare among them), a fake opening date in May 2024 (should find nothing), the study without the
+  Disneyland parks (their 70th anniversary began the same month), and with Busch Gardens Tampa added.
+
+Code: [causal.py](databricks/src/parks_lib/causal.py) (tested on simulated data with a known effect)
+and [09_epic_impact_study.py](databricks/src/09_epic_impact_study.py). The weekly
+`comparison-calendar-ingest` job refreshes the comparison parks and reruns the study into
+`epic_impact_summary` and `epic_impact_gaps`.
+
+**Results** (crowd score points, range across both methods and three comparison groups):
+
+| Park | Effect after opening | % of pre-Epic level | Fake 2024 opening | Placebo p-value |
+|---|---|---|---|---|
+| Universal Studios Florida | **-12 to -18** | -20% to -30% | +0.2 / +1.0 | 0.17 to 0.38 |
+| Islands of Adventure | -2 to -9 | -4% to -16% | -3.2 / -3.1 | 0.33 to 0.88 |
+| Both, averaged | -7 to -14 | -12% to -24% | -1.5 / -0.7 | 0.17 to 0.67 |
+
+What this says:
+
+- **Universal Studios Florida dropped when Epic opened and stayed down.** It tracked its comparison
+  within 2 points a year from 2022 to 2024, fell about 7 points below it for the rest of 2025, and
+  15-20 points below in 2026. No dip before the opening, so this isn't people delaying trips.
+- **Islands of Adventure shows no clear effect.** It was already slipping before Epic (summer 2024,
+  matching its 5.5% attendance drop that year), and its post-opening gaps swing both ways.
+- **Not statistically conclusive.** With seven comparison parks, the smallest possible placebo
+  p-value is 1/8. Disneyland alone moved -21 points as a placebo, for reasons of its own. Without the
+  Disneyland parks, Universal Studios' drop is larger than every placebo's.
+- **Disney World and the other Orlando parks: inconclusive.** The comparison parks can't reproduce
+  Disney's pre-opening path (monthly misses of 5-12 points against 3 for Universal Studios), and the
+  two methods disagree (Magic Kingdom -17 vs -7). SeaWorld Orlando, Legoland Florida and Epcot come
+  out near zero.
+- **A crowd score is not headcount.** It is built from wait times, and lines shrink faster than
+  crowds when rides run near capacity, so a 25% lower score likely means a smaller drop in visitors.
+  That fits Comcast's comment that Epic took fewer visitors from the older parks than it expected.
+  The 2025 TEA/AECOM attendance report, when published, is the check.
+- The synthetic control leans on Legoland California (60-90% weight). The simple-average
+  difference-in-differences doesn't, and gives a similar answer.
+
 ## App
 
 A Streamlit app on Databricks Apps ([databricks/app/](databricks/app/)), deployed by the bundle as
@@ -205,6 +263,11 @@ databricks bundle run crowd_calendar_ingest --profile free --params backfill=tru
 ```
 
 The `daily-features` job (6:30am Eastern) refreshes weather and rebuilds `calendar_features`.
+
+The `comparison-calendar-ingest` job (Mondays 5am Eastern) scrapes the comparison parks in
+`seeds/parks.csv` into `raw_crowd_calendar_comparison`, kept apart so the forecast and app only see
+Universal, then reruns the Epic Universe impact study. Its first run backfills from July 2021 on its
+own; that history was fetched from a laptop and copied into the volume to save Free Edition compute.
 
 The `wait-time-ingest` job runs hourly 8am-10pm Eastern. Each run saves the raw JSON to the
 `raw_files` volume and merges parsed rows into `raw_wait_times`, keyed on ride and `last_updated`.

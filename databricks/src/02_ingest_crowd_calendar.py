@@ -18,22 +18,18 @@
 dbutils.widgets.text("catalog", "workspace")
 dbutils.widgets.text("schema", "parks")
 dbutils.widgets.text("backfill", "false")
+dbutils.widgets.text("park_group", "universal")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 backfill = dbutils.widgets.get("backfill").lower() == "true"
+park_group = dbutils.widgets.get("park_group")
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {catalog}.{schema}.raw_files")
 volume_dir = f"/Volumes/{catalog}/{schema}/raw_files/crowd_calendar"
-table = f"{catalog}.{schema}.raw_crowd_calendar"
-
-# First month with data on queue-times for each park
-first_month = {
-    65: (2018, 7),   # Universal Studios Florida
-    64: (2018, 7),   # Islands of Adventure
-    334: (2025, 5),  # Epic Universe (opened 2025-05-22)
-    67: (2018, 7),   # Volcano Bay (months without data redirect elsewhere and parse to nothing)
-}
+# The Universal parks feed the forecast; comparison parks (for the Epic Universe impact study)
+# get their own table so the forecast, scoring and app keep seeing only Universal
+table = f"{catalog}.{schema}.raw_crowd_calendar" + ("" if park_group == "universal" else f"_{park_group}")
 
 # COMMAND ----------
 
@@ -41,8 +37,18 @@ import os
 import time
 import urllib.request
 from datetime import date, datetime, timezone
+from pathlib import Path
 
+import pandas as pd
+
+import parks_lib
 from parks_lib.queue_times import USER_AGENT, parse_calendar_month
+
+# First month to scrape for each park in the group, from seeds/parks.csv
+parks = pd.read_csv(Path(parks_lib.__file__).parents[2] / "seeds" / "parks.csv")
+parks = parks[parks["park_group"] == park_group]
+assert len(parks), f"No parks in group {park_group!r}"
+first_month = {int(r.park_id): tuple(int(x) for x in r.first_month.split("-")) for r in parks.itertuples()}
 
 def add_months(year, month, n):
     i = year * 12 + month - 1 + n

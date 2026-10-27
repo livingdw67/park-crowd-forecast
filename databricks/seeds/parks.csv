@@ -1,0 +1,19 @@
+park_id,name,park_group,first_month,causal_role,note
+65,Universal Studios Florida,universal,2018-07,treated,
+64,Islands of Adventure,universal,2018-07,treated,
+334,Epic Universe,universal,2025-05,,Opened 2025-05-22
+67,Volcano Bay,universal,2018-07,,Water park; months without data redirect elsewhere and parse to nothing
+16,Disneyland,comparison,2021-07,donor,70th anniversary celebration began mid-May 2025
+17,Disney California Adventure,comparison,2021-07,donor,Same resort as Disneyland
+66,Universal Studios Hollywood,comparison,2021-07,donor,
+61,Knott's Berry Farm,comparison,2021-07,donor,
+279,Legoland California,comparison,2021-07,donor,Some off-season weekdays closed
+20,SeaWorld San Diego,comparison,2021-07,donor,Measured history from early 2022
+32,Six Flags Magic Mountain,comparison,2021-07,donor,Closed some off-season weekdays
+24,Busch Gardens Tampa,comparison,2021-07,nearby,About 85 miles from Orlando; Orlando visitors day-trip there
+6,Magic Kingdom,comparison,2021-07,orlando,Possible spillover from Epic: an outcome in its own right
+5,Epcot,comparison,2021-07,orlando,Possible spillover from Epic
+7,Hollywood Studios,comparison,2021-07,orlando,Possible spillover from Epic
+8,Animal Kingdom,comparison,2021-07,orlando,Possible spillover from Epic
+21,SeaWorld Orlando,comparison,2021-07,orlando,Possible spillover from Epic
+280,Legoland Florida,comparison,2021-07,orlando,About 50 miles from Universal; possible spillover
