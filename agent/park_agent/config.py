@@ -4,6 +4,9 @@
     OPENAI_API_KEY=...               OpenAI (fallback; capped at $3/month)
     LOCAL_LLM_BASE_URL=http://localhost:11434/v1     a local Ollama server, tried first
     MONTHLY_CAP_USD=10
+    OPENAI_CAP_USD=3.00              OpenAI's monthly cap on this machine. The ledger is per machine,
+                                     so lower it by what the other machine has spent from the same
+                                     prepaid balance.
 """
 
 import os
@@ -44,5 +47,6 @@ def build_providers():
 
 def build_harness(data=None):
     gateway = Gateway(providers=build_providers(), ledger_path=LOGS / "ledger.jsonl",
-                      monthly_cap_usd=float(os.getenv("MONTHLY_CAP_USD", "10")))
+                      monthly_cap_usd=float(os.getenv("MONTHLY_CAP_USD", "10")),
+                      provider_caps_usd={"openai": float(os.getenv("OPENAI_CAP_USD", "3.00"))})
     return Harness(gateway, ParkTools(data or ParkData.load()), turns_dir=LOGS / "turns")
