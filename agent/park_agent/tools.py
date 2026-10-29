@@ -152,6 +152,13 @@ class ParkTools:
 
     # --- staffing planner ------------------------------------------------------------------------
 
+    def _staffed(self, pid):
+        staffed = sorted(self.data.locations["park_id"].unique())
+        if pid not in staffed:
+            raise ToolError(f"there is no staffing model for {PARKS[pid]}; staffing covers "
+                            f"{', '.join(PARKS[p] for p in staffed)}")
+        return pid
+
     def _plan_uncached(self, pid, crowd, open_hour, close_hour, headcount, fixed_from):
         locs = self.data.locations[self.data.locations["park_id"] == pid].to_dict("records")
         if fixed_from is not None:
@@ -159,7 +166,7 @@ class ParkTools:
         return plan_staffing(locs, crowd, open_hour, close_hour, headcount=headcount)
 
     def get_staffing_plan(self, park, date_):
-        pid, day = park_id(park), parse_date(date_)
+        pid, day = self._staffed(park_id(park)), parse_date(date_)
         row = self._forecast_row(pid, day)
         crowd, (open_hour, close_hour) = round(row["predicted_crowd"]), park_hours(row)
         plan = self._plan(pid, crowd, open_hour, close_hour, None, None)
@@ -179,7 +186,7 @@ class ParkTools:
 
     def what_if(self, park, date_, crowd_score=None, crowd_change=None, open_hour=None, close_hour=None,
                 max_workers=None):
-        pid, day = park_id(park), parse_date(date_)
+        pid, day = self._staffed(park_id(park)), parse_date(date_)
         row = self._forecast_row(pid, day)
         forecast = round(row["predicted_crowd"])
         planned_open, planned_close = park_hours(row)

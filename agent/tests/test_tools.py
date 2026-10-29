@@ -43,3 +43,5 @@ async def test_execute_returns_tool_errors_to_the_model(tools):
     assert is_error and "unknown park" in json.loads(result)["error"]
     result, is_error = await tools.execute("get_epic_impact", {})
     assert not is_error and json.loads(result)["results"][0]["effect_points"] == -14.2
+    result, is_error = await tools.execute("what_if", {"park": "Volcano Bay", "date": "2026-11-27", "crowd_change": 10})
+    assert is_error and "no staffing model for Volcano Bay" in json.loads(result)["error"]
