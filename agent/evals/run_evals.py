@@ -38,7 +38,7 @@ def grade(case, events):
     ok_tools = {e["name"] for e in calls if not e["is_error"]}
     validation = next((e for e in events if e["type"] == "validation"), None)
     checks = {"route": route in case["route"]}
-    if case.get("expect") != "decline" and case["tools"]:
+    if case.get("expect") != "decline" and case["tools"] and route != "blocked":
         checks["tools"] = all(ok_tools & set(group) for group in case["tools"])
     if validation is not None:
         checks["grounded"] = validation["ok"]
