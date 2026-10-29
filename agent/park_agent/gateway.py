@@ -10,9 +10,10 @@ A streamed answer can fail over only before its first chunk, since text already 
 back.
 
 Budget: every call is priced from its token usage. Before a call, its worst case (estimated input
-plus the full output allowance) must fit in what is left of both the request's cap and the month's
-cap; a paid model that doesn't fit is skipped, and when nothing fits the call raises BudgetExceeded.
-The month's spend is read back from the ledger file, so the cap holds across restarts.
+plus the full output allowance) must fit in what is left of the request's cap, the month's cap, and
+the provider's own monthly cap when it has one (a prepaid balance); a paid model that doesn't fit is
+skipped, and when nothing fits the call raises BudgetExceeded. The month's spend is read back from
+the ledger file, so the caps hold across restarts.
 
 Ledger: one record per call (time, request id, task, model, tokens, cost, latency, outcome), kept in
 memory and appended to a JSONL file when one is configured.
@@ -68,6 +69,7 @@ class Gateway:
     models: list = field(default_factory=load_models)
     routes: dict = field(default_factory=lambda: dict(TASK_ROUTES))
     monthly_cap_usd: float = 10.0
+    provider_caps_usd: dict = field(default_factory=lambda: {"openai": 3.00})
     ledger_path: Path | None = None
     breaker_failures: int = 3
     breaker_seconds: float = 60.0
@@ -76,14 +78,19 @@ class Gateway:
     def __post_init__(self):
         self.ledger = []
         self._breakers = {name: _Breaker() for name in self.providers}
-        self.month_spent_usd = self._spent_this_month()
+        self.provider_spent_usd = self._spent_this_month()
+        self.month_spent_usd = sum(self.provider_spent_usd.values())
 
     def _spent_this_month(self):
+        spent = {}
         if not self.ledger_path or not Path(self.ledger_path).exists():
-            return 0.0
+            return spent
         this_month = month_key()
         with open(self.ledger_path, encoding="utf-8") as f:
-            return sum(e["cost_usd"] for e in map(json.loads, f) if e.get("month") == this_month)
+            for e in map(json.loads, f):
+                if e.get("month") == this_month:
+                    spent[e.get("provider")] = spent.get(e.get("provider"), 0.0) + e["cost_usd"]
+        return spent
 
     # --- routing ---------------------------------------------------------------------------------
 
@@ -107,7 +114,11 @@ class Gateway:
         if budget is not None:
             left = min(left, budget.remaining)
         est_in = estimate_tokens(input_text)
-        fits = [m for m in models if m.cost(est_in, MAX_OUTPUT_TOKENS) <= left]
+
+        def room(m):
+            cap = self.provider_caps_usd.get(m.provider)
+            return left if cap is None else min(left, cap - self.provider_spent_usd.get(m.provider, 0.0))
+        fits = [m for m in models if m.cost(est_in, MAX_OUTPUT_TOKENS) <= room(m)]
         if not fits:
             raise BudgetExceeded(f"{task}: ${max(left, 0):.4f} left this request/month, not enough for a paid call")
         return fits
@@ -180,6 +191,7 @@ class Gateway:
     def _record(self, request_id, task, model, usage, started, outcome, error, prior_errors, budget):
         cost = model.cost(usage.input_tokens, usage.output_tokens)
         self.month_spent_usd += cost
+        self.provider_spent_usd[model.provider] = self.provider_spent_usd.get(model.provider, 0.0) + cost
         if budget is not None:
             budget.spent_usd += cost
         now = datetime.now(timezone.utc)

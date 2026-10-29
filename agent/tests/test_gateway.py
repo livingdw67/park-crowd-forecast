@@ -90,6 +90,19 @@ async def test_monthly_cap_is_read_back_from_the_ledger(tmp_path):
         await gw.run_tools("analyze", "sys", "q", [], echo, "r1")
 
 
+async def test_provider_cap_skips_only_that_provider(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps({"month": month_key(), "provider": "openai", "cost_usd": 2.99}) + "\n",
+                      encoding="utf-8")
+    claude = FakeProvider("anthropic", [ProviderError("overloaded", retryable=True)])
+    gpt = FakeProvider("openai", [ANSWER])
+    gw = Gateway(providers={"anthropic": claude, "openai": gpt}, ledger_path=ledger,
+                 provider_caps_usd={"openai": 3.00})
+    with pytest.raises(ProviderError, match="all providers failed"):
+        await gw.run_tools("analyze", "sys", "q", [], echo, "r1")
+    assert gpt.calls == []          # openai's worst case (~$0.07) doesn't fit its last $0.01
+
+
 async def test_ledger_prices_calls_from_usage(tmp_path):
     claude = FakeProvider("anthropic", [{"text": "ok", "usage": (1000, 200)}])
     gw = Gateway(providers={"anthropic": claude}, ledger_path=tmp_path / "ledger.jsonl")
