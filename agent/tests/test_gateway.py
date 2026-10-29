@@ -35,7 +35,8 @@ async def test_cheapest_paid_model_first_when_no_local():
     claude, gpt = FakeProvider("anthropic", [ANSWER]), FakeProvider("openai", [])
     gw = gateway(anthropic=claude, openai=gpt)
     assert [m.id for m in gw.candidates("analyze")] == ["claude-haiku-5-5", "gpt-5.4-mini"]
-    assert [m.id for m in gw.candidates("write")] == ["claude-opus-5-5", "gpt-5.5"]
+    assert [m.id for m in gw.candidates("write")] == ["claude-haiku-5-5", "gpt-5.4-mini"]
+    assert [m.id for m in gw.candidates("teach")] == ["claude-opus-5-5", "gpt-5.5"]
 
 
 async def test_retryable_failure_fails_over_and_is_logged():

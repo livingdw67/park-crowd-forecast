@@ -28,8 +28,11 @@ from pathlib import Path
 from park_agent.types import BudgetExceeded, ModelSpec, ProviderError, Usage
 
 MODELS_FILE = Path(__file__).with_name("models.json")
-TASK_ROUTES = {"route": ["local", "fast"], "analyze": ["local", "fast"], "write": ["local", "strong"]}
-TASK_EFFORT = {"route": "low", "analyze": "low", "write": "medium"}
+# Everyday answers stay local or on the cheap tier; the strong tier only runs as a teacher, writing
+# reference answers for distilling a local model.
+TASK_ROUTES = {"route": ["local", "fast"], "analyze": ["local", "fast"], "write": ["local", "fast"],
+               "teach": ["strong"]}
+TASK_EFFORT = {"route": "low", "analyze": "low", "write": "medium", "teach": "medium"}
 MAX_OUTPUT_TOKENS = 16000
 
 

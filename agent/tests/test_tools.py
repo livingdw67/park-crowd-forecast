@@ -1,28 +1,7 @@
 import json
-from datetime import date, timedelta
-
-import pandas as pd
 import pytest
 
-from park_agent.data import ParkData
-from park_agent.tools import ParkTools, ToolError
-
-START = date(2026, 11, 20)      # covers Thanksgiving (Nov 26) and its long weekend
-
-
-@pytest.fixture(scope="module")
-def tools():
-    days = [START + timedelta(days=i) for i in range(14)]
-    forecast = pd.DataFrame([
-        {"park_id": pid, "date": d, "predicted_crowd": base + (20 if d == date(2026, 11, 27) else 0) + i % 3,
-         "queue_times_forecast": None, "scored_at": "2026-11-20", "open_time": "09:00", "close_time": "21:00",
-         "is_closed": False}
-        for pid, base in [(65, 50.4), (64, 44.6)] for i, d in enumerate(days)])
-    measured = pd.DataFrame({"park_id": [65], "date": [START - timedelta(days=1)], "measured_crowd": [48]})
-    impact = pd.DataFrame({"park": ["Universal Studios Florida"], "method": ["synthetic_control"],
-                           "effect_points": [-14.237], "placebo_p": [0.25]})
-    return ParkTools(ParkData(forecast, measured, impact, pd.DataFrame()))
-
+from park_agent.tools import ToolError
 
 def test_forecast_rows_carry_calendar_drivers(tools):
     out = tools.get_forecast("Universal Studios Florida", "2026-11-26", "2026-11-28")
@@ -64,8 +43,3 @@ async def test_execute_returns_tool_errors_to_the_model(tools):
     assert is_error and "unknown park" in json.loads(result)["error"]
     result, is_error = await tools.execute("get_epic_impact", {})
     assert not is_error and json.loads(result)["results"][0]["effect_points"] == -14.24
-
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
