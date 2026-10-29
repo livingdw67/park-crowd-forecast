@@ -2,7 +2,8 @@
 same API (Ollama at http://localhost:11434/v1).
 
 Local servers reject OpenAI-only options, so `hosted=False` drops `reasoning_effort` and sends
-`max_tokens` instead of `max_completion_tokens`.
+`max_tokens` instead of `max_completion_tokens`. On Chat Completions, OpenAI accepts function tools
+only with `reasoning_effort="none"`, so tool loops send that.
 """
 
 import asyncio
@@ -58,7 +59,7 @@ class OpenAICompatibleProvider:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
         calls = []
         for round_ in range(1, max_rounds + 1):
-            response, message = await self._create(model=model, messages=messages, tools=specs, **self._options(effort))
+            response, message = await self._create(model=model, messages=messages, tools=specs, **self._options("none"))
             if response.usage:
                 usage.add(response.usage.prompt_tokens, response.usage.completion_tokens)
             if not message.tool_calls:

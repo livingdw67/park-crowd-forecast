@@ -28,6 +28,7 @@ def tools():
          "is_closed": False}
         for pid, base in [(65, 50.4), (64, 44.6)] for i, d in enumerate(days)])
     measured = pd.DataFrame({"park_id": [65], "date": [START - timedelta(days=1)], "measured_crowd": [48]})
-    impact = pd.DataFrame({"park": ["Universal Studios Florida"], "method": ["synthetic_control"],
-                           "effect_points": [-14.237], "placebo_p": [0.25]})
+    impact = pd.DataFrame({"park": ["Universal Studios Florida"], "role": ["treated"], "variant": ["main"],
+                           "method": ["synthetic_control"], "effect_points": [-14.237], "effect_pct": [-23.41],
+                           "p_value_effect": [0.25]})
     return ParkTools(ParkData(forecast, measured, impact, pd.DataFrame()))

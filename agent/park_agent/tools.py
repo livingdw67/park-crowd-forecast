@@ -22,6 +22,7 @@ PARK_IDS = {name: park_id for park_id, name in PARKS.items()}
 ALIASES = {"usf": 65, "universal studios": 65, "ioa": 64, "islands": 64, "epic": 334, "volcano": 67}
 SCHOOL_BREAKS = ["thanksgiving_week", "winter_break", "spring_break_season", "easter_week", "fl_spring_break",
                  "fl_summer", "us_summer"]
+REGIME_FLAGS = {"epic_universe_open", "covid_closure"}    # in events.csv, but periods, not events
 TYPICAL_ERROR_POINTS = 15      # the backtest's mean absolute error ran 12 to 19 points (README, Forecast)
 FORECAST_MISS = 15             # the daily job replays each plan 15 points busier
 EVENT_NIGHT_DAY_CLOSE, LATEST_CLOSE = 17, 23
@@ -89,7 +90,8 @@ class ParkTools:
 
     def _drivers(self, day):
         cal = self.data.calendar.loc[day]
-        events = [c.removeprefix("event_") for c in cal.index if c.startswith("event_") and bool(cal[c])]
+        events = [c.removeprefix("event_") for c in cal.index
+                  if c.startswith("event_") and bool(cal[c]) and c.removeprefix("event_") not in REGIME_FLAGS]
         return {"weekday": WEEKDAYS[day.weekday()],
                 "holiday": cal["holiday_name"] if isinstance(cal["holiday_name"], str) else None,
                 "holiday_weekend": bool(cal["is_holiday_weekend"]),
@@ -134,12 +136,19 @@ class ParkTools:
                 "days_ranked": len(ranked), "average_next_30_days": round(window["predicted_crowd"].mean())}
 
     def get_epic_impact(self):
-        s = self.data.impact_summary.copy()
-        for col in s.select_dtypes("number"):
-            s[col] = s[col].round(2)
+        s = self.data.impact_summary
+        s = s[(s["role"] == "treated") | ((s["role"] == "orlando") & (s["variant"] == "main"))]
+        rows = [{"park": r.park, "role": r.role, "variant": r.variant, "method": r.method,
+                 "effect_points": round(r.effect_points, 1), "effect_pct": round(r.effect_pct, 1),
+                 "placebo_p_value": round(r.p_value_effect, 2)} for r in s.itertuples()]
         return {"study": "Epic Universe opening (May 2025): difference-in-differences and synthetic control "
                          "against out-of-state parks, with placebo tests",
-                "results": json.loads(s.to_json(orient="records", date_format="iso"))}
+                "reading": "effect_points is the change in the 0-100 crowd score since the opening (negative = "
+                           "fewer crowds); placebo_p_value is the share of placebo parks with an effect as large, "
+                           "so with few comparison parks it can't go below about 0.12. Variant 'main' is the "
+                           "headline; 'placebo_opening_2024_05' pretends Epic opened a year early and should "
+                           "show no effect.",
+                "results": rows}
 
     # --- staffing planner ------------------------------------------------------------------------
 

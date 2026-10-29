@@ -42,4 +42,4 @@ async def test_execute_returns_tool_errors_to_the_model(tools):
     result, is_error = await tools.execute("explain_day", {"park": "Disneyland", "date": "2026-11-27"})
     assert is_error and "unknown park" in json.loads(result)["error"]
     result, is_error = await tools.execute("get_epic_impact", {})
-    assert not is_error and json.loads(result)["results"][0]["effect_points"] == -14.24
+    assert not is_error and json.loads(result)["results"][0]["effect_points"] == -14.2
