@@ -7,6 +7,7 @@
     OPENAI_CAP_USD=3.00              OpenAI's monthly cap on this machine. The ledger is per machine,
                                      so lower it by what the other machine has spent from the same
                                      prepaid balance.
+    LOCAL_WRITE_MODEL=park-writer-1.5b   optional: an Ollama model for the writer step only
 """
 
 import os
@@ -16,6 +17,7 @@ from park_agent.data import ParkData
 from park_agent.gateway import Gateway
 from park_agent.harness import Harness
 from park_agent.tools import ParkTools
+from park_agent.types import ModelSpec
 
 AGENT = Path(__file__).resolve().parents[1]
 LOGS = AGENT / "logs"
@@ -49,4 +51,9 @@ def build_harness(data=None):
     gateway = Gateway(providers=build_providers(), ledger_path=LOGS / "ledger.jsonl",
                       monthly_cap_usd=float(os.getenv("MONTHLY_CAP_USD", "10")),
                       provider_caps_usd={"openai": float(os.getenv("OPENAI_CAP_USD", "3.00"))})
+    if os.getenv("LOCAL_WRITE_MODEL") and "local" in gateway.providers:
+        # A distilled writer (agent/distill): only the answer-writing step goes to it; routing and
+        # tool calls stay on the general local model.
+        gateway.models.append(ModelSpec(os.environ["LOCAL_WRITE_MODEL"], "local", "local_write", 0.0, 0.0))
+        gateway.routes["write"] = ["local_write", *gateway.routes["write"]]
     return Harness(gateway, ParkTools(data or ParkData.load()), turns_dir=LOGS / "turns")

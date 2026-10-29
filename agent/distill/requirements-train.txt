@@ -1,0 +1,7 @@
+# LoRA training only, in its own venv built on a Python that already has CUDA torch:
+#   python -m venv --system-site-packages agent\distill\.venv
+transformers==4.46.3
+peft==0.13.2
+accelerate==1.1.1
+huggingface_hub==0.36.2
+safetensors
