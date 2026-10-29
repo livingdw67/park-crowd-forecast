@@ -97,7 +97,9 @@ class Harness:
         decision = await self.gateway.complete_json(
             "route", "You route questions for a theme park planning assistant. forecast: how busy a park or "
             "day will be, why, or the Epic Universe study. staffing: crew plans, labor cost, waits, what-if "
-            "scenarios. both: needs both. out_of_scope: anything else. " + context,
+            "scenarios. both: needs both. out_of_scope: anything else, including other parks. A question about "
+            "these parks on a date outside the forecast range is still forecast: the analyst explains the range. "
+            + context,
             question, ROUTE_SCHEMA, turn.request_id, budget)
         turn.route, turn.route_reason = decision["route"], decision["reason"]
         yield {"type": "route", "route": turn.route, "reason": turn.route_reason}
@@ -116,7 +118,8 @@ class Harness:
                 turn.tool_calls.append(record)
                 yield {"type": "tool", **{k: record[k] for k in ("agent", "name", "args", "is_error")}}
 
-        outputs = [c["result"] for c in turn.tool_calls if not c["is_error"]]
+        # numbers an answer may quote: tool results and errors, tool arguments, and the question itself
+        outputs = [c["result"] for c in turn.tool_calls] + [c["args"] for c in turn.tool_calls] + [question]
         async for chunk in self.gateway.stream("write", WRITER_SYSTEM, self._writer_prompt(question, context, turn),
                                                turn.request_id, budget):
             turn.answer += chunk
@@ -136,10 +139,13 @@ class Harness:
 
     @staticmethod
     def _writer_prompt(question, context, turn):
-        tool_json = [{"tool": c["name"], "args": c["args"], "result": json.loads(c["result"])}
-                     for c in turn.tool_calls if not c["is_error"]]
+        results = [{"tool": c["name"], "args": c["args"], "result": json.loads(c["result"])}
+                   for c in turn.tool_calls if not c["is_error"]]
+        errors = [{"tool": c["name"], "args": c["args"], "error": json.loads(c["result"]).get("error")}
+                  for c in turn.tool_calls if c["is_error"]]
         notes = "\n\n".join(f"{name} notes:\n{text}" for name, text in turn.findings.items())
-        return (f"{context}\n\nQuestion: {question}\n\n{notes}\n\nTool results:\n{json.dumps(tool_json, default=str)}")
+        return (f"{context}\n\nQuestion: {question}\n\n{notes}\n\nTool results:\n{json.dumps(results, default=str)}"
+                f"\n\nTool errors:\n{json.dumps(errors, default=str)}")
 
     def _checkpoint(self, turn):
         if self.turns_dir:
@@ -154,4 +160,6 @@ WRITER_SYSTEM = (
     "numbers. Use only numbers that appear in the tool results; don't compute new ones except simple "
     "differences. Crowd scores are on a 0-100 scale; mention the typical forecast error when you give a "
     "forecast. Staffing costs and waits come from a planning model with assumed demand; say so when you "
-    "quote them. Plain text, no headings.")
+    "quote them. When a tool returned an error, say plainly what isn't available and why, quoting the error's "
+    "facts (such as the dates the forecast covers); never offer estimates the tools didn't produce. Plain text, "
+    "no headings.")

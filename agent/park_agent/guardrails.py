@@ -72,7 +72,12 @@ def tool_numbers(outputs):
             values.update(n for _, n, _ in _numbers(node))
 
     for out in outputs:
-        walk(json.loads(out) if isinstance(out, str) else out)
+        if isinstance(out, str):
+            try:
+                out = json.loads(out)
+            except json.JSONDecodeError:
+                pass                     # plain text, such as the question
+        walk(out)
     return values
 
 

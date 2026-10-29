@@ -27,6 +27,11 @@ def test_answer_numbers_must_trace_to_tool_output():
     assert check_answer("It's 56 points above the 15-point error band.", outputs).ok          # 71 - 15
     bad = check_answer("Expect 83 on Friday and about 64,000 guests.", outputs)
     assert not bad.ok and bad.ungrounded == ["83", "64,000"]
+    # dates the user asked about, or a tool was called with, may be repeated
+    declined = "No forecast for March 15, 2027 (2027-03-15); forecasts cover 2026-10-29 to 2027-01-27."
+    sources = [json.dumps({"error": "no forecast in that range; forecasts cover 2026-10-29 to 2027-01-27"}),
+               {"park": "Universal Studios Florida", "date": "2027-03-15"}, "How busy on March 15, 2027?"]
+    assert check_answer(declined, sources).ok
 
 
 async def test_a_full_turn_routes_calls_tools_streams_and_validates(tools, tmp_path):

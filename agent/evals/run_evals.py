@@ -72,7 +72,8 @@ async def main(max_usd, only):
               f"{result['seconds']}s ${result['cost_usd']:.4f}")
     summary = {"questions": len(results), "passed": sum(r["passed"] for r in results),
                "cost_usd": round(sum(r["cost_usd"] for r in results), 4),
-               "by_check": {k: f"{sum(r['checks'].get(k, True) for r in results)}/{sum(k in r['checks'] for r in results)}"
+               "by_check": {k: f"{sum(r['checks'][k] for r in results if k in r['checks'])}/"
+                               f"{sum(k in r['checks'] for r in results)}"
                             for k in ("route", "tools", "grounded", "no_error")},
                "providers": sorted(harness.gateway.providers)}
     print(json.dumps(summary, indent=1))
