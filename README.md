@@ -4,6 +4,9 @@ Forecasts daily crowd levels at the Universal Orlando parks and turns the foreca
 plan. Built on Databricks (Delta tables, Unity Catalog, MLflow) with a Streamlit front end, plus an
 agent that answers questions about the forecast and staffing plans from the same data and optimizer.
 
+**Try it:** [park-crowd-forecast.streamlit.app](https://park-crowd-forecast.streamlit.app/), a public demo with a
+model lab, a crowd explorer and the Epic Universe study (no sign-in).
+
 Daily park attendance isn't published (only annual totals), so ride wait times stand in for it.
 The crowd index is built from them, and the forecast should be read as "how busy relative to
 other days", not a headcount.
@@ -260,7 +263,8 @@ pipeline are in [agent/README.md](agent/README.md).
 
 ## Public app
 
-[public_app/](public_app/) is a Streamlit app anyone can open without a Databricks sign-in. It runs on a
+[public_app/](public_app/) is a Streamlit app anyone can open without a Databricks sign-in, live at
+[park-crowd-forecast.streamlit.app](https://park-crowd-forecast.streamlit.app/). It runs on a
 small snapshot of derived data in [public_app/data/](public_app/data/) (daily crowd scores with the model
 features, monthly averages per park, and the 90-day forecast; no scraped pages or ride waits) and the same
 `parks_lib` code as the jobs. Every model is trained in the app, so clicking costs nothing.
@@ -280,8 +284,8 @@ equirements.txt
 ```
 
 Refresh the snapshot with `.venv\Scripts\python public_app\scripts\export_data.py` (needs the
-Databricks CLI login). To host it on Streamlit Community Cloud, deploy this repo with
-`public_app/streamlit_app.py` as the main file; it installs `public_app/requirements.txt`.
+Databricks CLI login); pushing it to `main` redeploys the hosted app. It runs on Streamlit Community Cloud
+from this repo with `public_app/streamlit_app.py` as the main file and Python 3.11.
 
 ## Local development
 
