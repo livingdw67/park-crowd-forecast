@@ -75,10 +75,10 @@ def year_calendar(days, selected=None):
     `days`: date, crowd_percent, holiday_name, day_key (YYYY-MM-DD, the selection field).
     """
     days = days.assign(week=days["date"].dt.isocalendar().week.astype(int),
-                       weekday=days["date"].dt.dayofweek.map(dict(enumerate(WEEKDAYS))),
+                       weekday=days["date"].dt.day_of_week.map(dict(enumerate(WEEKDAYS))),
                        month=days["date"].dt.strftime("%b"))
     # Week columns run in calendar order: ISO week 1 can start in late December and week 52/53 in January
-    days["col"] = (days["date"] - pd.to_timedelta(days["date"].dt.dayofweek, unit="D")).dt.strftime("%Y-%m-%d")
+    days["col"] = (days["date"] - pd.to_timedelta(days["date"].dt.day_of_week, unit="D")).dt.strftime("%Y-%m-%d")
     pick = alt.selection_point(name="day", fields=["day_key"], on="click", clear="dblclick", toggle=False)
     x = alt.X("col:O", title=None, sort="ascending",
               axis=alt.Axis(labels=False, ticks=False, domain=False))
