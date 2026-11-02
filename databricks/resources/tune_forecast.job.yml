@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    tune_forecast:
+      name: tune-forecast
+      # On demand only (no schedule; Free Edition's daily compute quota): an Optuna search, one look at
+      # the holdout, and a promotion to champion only on a reliable gain. See src/10_tune_forecast.py.
+      #   databricks bundle run tune_forecast --profile free
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: n_trials
+          default: "60"
+        - name: timeout_minutes
+          default: "30"
+      tasks:
+        - task_key: tune
+          notebook_task:
+            notebook_path: ../src/10_tune_forecast.py

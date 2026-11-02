@@ -4,3 +4,4 @@ lightgbm==4.5.0
 scikit-learn==1.5.2
 python-dateutil
 pytest
+optuna==4.9.0
