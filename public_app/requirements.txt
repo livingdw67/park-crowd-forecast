@@ -1,8 +1,8 @@
-# The public app (Streamlit Community Cloud reads this file next to the entry point).
-# ortools 9.11 is what parks_lib's staffing module (imported by the shared chart helpers) is pinned to.
+# The public app (Streamlit Community Cloud reads this file next to the entry point). Deploy on Python 3.11:
+# pandas 2.2.3 has no wheels past 3.13, and building it from source times out on Community Cloud.
 streamlit==1.66.1
 pandas==2.2.3
 pyarrow
 lightgbm==4.5.0
+scikit-learn==1.5.2   # lightgbm's LGBMRegressor needs it
 scipy
-ortools==9.11.4210
