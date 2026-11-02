@@ -10,6 +10,8 @@ __pycache__/
 
 # Data Files
 data/
+# The public app's snapshot is derived data (scores and model features, no scraped pages): committed
+!public_app/data/
 *.csv
 # Hand-checked seed tables (events with sources) are committed
 !databricks/seeds/*.csv
