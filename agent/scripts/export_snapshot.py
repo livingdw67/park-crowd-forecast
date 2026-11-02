@@ -1,6 +1,6 @@
 """Export the tables the agent reads from Databricks into agent/snapshot/ (git-ignored).
 
-    databricks auth login --host https://dbc-303976ab-2cd1.cloud.databricks.com --profile free
+    databricks auth login --host <your workspace URL> --profile free
     .venv\\Scripts\\python agent\\scripts\\export_snapshot.py
 
 Reads through the first SQL warehouse in the workspace (on Free Edition, the Serverless Starter
