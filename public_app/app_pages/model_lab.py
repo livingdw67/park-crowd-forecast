@@ -57,10 +57,13 @@ groups = tuple(g for g in lab.FEATURE_GROUPS
 params = {k: st.session_state[f"lab_{k}"] for k in lab.CHAMPION_PARAMS}
 params["objective"] = lab.OBJECTIVES[st.session_state["lab_objective"]]
 
+champion = (tuple(lab.CHAMPION_GROUPS), tuple(sorted({**lab.CHAMPION_PARAMS, "objective": "regression_l1"}.items())))
+mine_key = (groups, tuple(sorted(params.items())))
+is_champion = mine_key == champion   # then "your model" is the champion, line for line
+
 with st.spinner("Training four models, one per test year..."):
-    champ_preds, _, _ = cached.backtest(tuple(lab.CHAMPION_GROUPS), tuple(sorted(
-        {**lab.CHAMPION_PARAMS, "objective": "regression_l1"}.items())))
-    preds, importance, seconds = cached.backtest(groups, tuple(sorted(params.items())))
+    champ_preds, _, _ = cached.backtest(*champion)
+    preds, importance, seconds = cached.backtest(*mine_key)
 base = cached.baselines()
 
 yours_by_year = lab.mae_by_year(preds).assign(method=viz.YOURS)
@@ -82,11 +85,16 @@ with st.container(horizontal=True):
               help="Simple rules any forecast should beat.")
     st.metric("Training time", f"{seconds:.1f} s", border=True, help="Four models, one per test year, in this app.")
 
-alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
-alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
-      title={"better": "Better than the champion", "worse": "Worse than the champion",
-             "tie": "No real difference"}[outcome],
-      icon={"better": ":material/trending_down:", "worse": ":material/trending_up:", "tie": ":material/balance:"}[outcome])
+if is_champion:
+    st.info("Change a setting or a feature group and click Retrain and backtest to compare your model with it.",
+            title="These are the champion's settings", icon=":material/tune:")
+else:
+    alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
+    alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
+          title={"better": "Better than the champion", "worse": "Worse than the champion",
+                 "tie": "No real difference"}[outcome],
+          icon={"better": ":material/trending_down:", "worse": ":material/trending_up:",
+                "tie": ":material/balance:"}[outcome])
 
 with st.expander("About this test: a paired block bootstrap", icon=":material/science:"):
     st.markdown(f"""
@@ -119,7 +127,7 @@ verdict holds as the blocks grow, it doesn't hinge on that assumption.
 st.subheader("Error by test year", anchor=False)
 st.caption("Lower is better. The two grey lines are the baselines. Every year is a model trained only on earlier days; "
            "2026 runs through the snapshot date.")
-frame = pd.concat([yours_by_year, champ_by_year, base], ignore_index=True)
+frame = pd.concat(([] if is_champion else [yours_by_year]) + [champ_by_year, base], ignore_index=True)
 st.altair_chart(viz.mae_by_year(frame), alt="Backtest error by test year for your model, the champion and two baselines")
 
 left, right = st.columns([3, 2], gap="large")
@@ -142,11 +150,11 @@ with left:
         lines = pd.concat([
             mine.assign(series=viz.MEASURED, value=mine["actual"]),
             champ.assign(series=viz.CHAMPION, value=champ["pred"]),
-            mine.assign(series=viz.YOURS, value=mine["pred"]),
+            *([] if is_champion else [mine.assign(series=viz.YOURS, value=mine["pred"])]),
         ])[["date", "series", "value"]]
         st.altair_chart(viz.prediction_lines(lines), alt=f"Daily measured crowd score and predictions, {park}, {year}")
 with right:
-    st.subheader("What your model leans on", anchor=False)
+    st.subheader("What the champion leans on" if is_champion else "What your model leans on", anchor=False)
     st.caption("Share of the model's total gain (how much each feature's splits cut the error), averaged over the "
                "four test-year models.")
-    st.altair_chart(viz.importance(importance), alt="Feature importance for your model")
+    st.altair_chart(viz.importance(importance, champion=is_champion), alt="Feature importance for your model")

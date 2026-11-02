@@ -108,3 +108,13 @@ def test_epic_page_needs_three_comparison_parks():
     at.pills(key="epic_donors").set_value(lab.DEFAULT_DONORS)
     at.toggle(key="epic_fake").set_value(True).run()
     assert not at.exception and not at.warning
+
+
+def test_lab_on_champion_settings_says_so():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(APP / "streamlit_app.py"), default_timeout=180)
+    at.run()
+    assert not at.exception
+    assert any("Retrain and backtest" in i.value for i in at.info)   # the "these are the champion's settings" note
+    assert at.metric[0].value == at.metric[1].value
