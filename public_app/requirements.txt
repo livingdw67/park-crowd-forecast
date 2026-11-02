@@ -1,0 +1,8 @@
+# The public app (Streamlit Community Cloud reads this file next to the entry point).
+# ortools 9.11 is what parks_lib's staffing module (imported by the shared chart helpers) is pinned to.
+streamlit==1.66.1
+pandas==2.2.3
+pyarrow
+lightgbm==4.5.0
+scipy
+ortools==9.11.4210

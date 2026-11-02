@@ -20,6 +20,7 @@ other days", not a headcount.
 | 1f | Streamlit app on Databricks Apps: crowd calendar, staffing plan, what-if scenarios | Live since 2026-10-22 |
 | 1g | Epic Universe impact study: difference-in-differences and synthetic control with placebo tests | Live since 2026-10-27 |
 | 2 | Agent that explains forecasts and re-plans staffing, with an AI gateway, streaming API and eval suite ([agent/](agent/)) | Built 2026-10-29; distilling a local writer model in progress |
+| 3 | Public demo app on a frozen snapshot: model lab, crowd explorer, interactive Epic study ([public_app/](public_app/)) | Built 2026-11-02 |
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs,
 so the agent calls the same code as agent tools.
@@ -257,6 +258,31 @@ A 30-question eval set, graded without a model judge (route, tools, grounded num
 passes 30/30 on gpt-5.4-mini at about $0.17 a run. Details, load test results and the distillation
 pipeline are in [agent/README.md](agent/README.md).
 
+## Public app
+
+[public_app/](public_app/) is a Streamlit app anyone can open without a Databricks sign-in. It runs on a
+small snapshot of derived data in [public_app/data/](public_app/data/) (daily crowd scores with the model
+features, monthly averages per park, and the 90-day forecast; no scraped pages or ride waits) and the same
+`parks_lib` code as the jobs. Every model is trained in the app, so clicking costs nothing.
+
+- **Model lab:** change LightGBM's settings, the loss and the feature groups, retrain, and compare the
+  backtest with the champion and the baselines. A paired block bootstrap says whether your model is really
+  better or worse, with a check across block lengths.
+- **Crowd explorer:** every measured day since 2018 as a calendar per park and year. Click a day to see
+  which feature groups pushed its estimate up or down (SHAP values), plus the next 90 days' forecast.
+- **Epic Universe impact:** rerun the impact study live: pick the park, method, comparison parks and
+  before period, or fake the opening a year early, and the estimate, placebo test and weights update.
+
+```
+.venv\Scripts\python -m pip install -r public_app
+equirements.txt
+.venv\Scripts\streamlit run public_app\streamlit_app.py
+```
+
+Refresh the snapshot with `.venv\Scripts\python public_app\scripts\export_data.py` (needs the
+Databricks CLI login). To host it on Streamlit Community Cloud, deploy this repo with
+`public_app/streamlit_app.py` as the main file; it installs `public_app/requirements.txt`.
+
 ## Local development
 
 ```
@@ -297,4 +323,5 @@ The `wait-time-ingest` job runs hourly 8am-10pm Eastern. Each run saves the raw 
 
 ## License
 
-MIT; see [LICENSE](LICENSE). Wait-time and crowd data belong to Queue-Times.com and aren't included.
+The code is MIT licensed ([LICENSE](LICENSE)); the data isn't. Crowd scores come from Queue-Times.com; only the
+derived snapshot in [public_app/data/](public_app/data/) is included, with no scraped pages or ride waits.
