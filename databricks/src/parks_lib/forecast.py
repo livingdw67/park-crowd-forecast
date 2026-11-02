@@ -18,6 +18,16 @@ CALENDAR_FEATURES = [
     "thanksgiving_week", "winter_break", "spring_break_season", "easter_week", "fl_spring_break",
     "fl_summer", "us_summer", "event_hhn", "event_epic_universe_open",
 ]
+# The calendar features in groups that can be switched on and off (the tuning job and the public app's
+# model lab). The first group is always on; the four together are CALENDAR_FEATURES, in its order.
+CALENDAR_GROUPS = {
+    "Park, season and weekday": ["park_id", "year", "month", "day_of_year", "week_of_year", "day_of_week",
+                                 "is_weekend"],
+    "Holidays": ["is_holiday", "is_holiday_weekend", "days_to_next_holiday", "days_since_last_holiday"],
+    "School breaks": ["thanksgiving_week", "winter_break", "spring_break_season", "easter_week", "fl_spring_break",
+                      "fl_summer", "us_summer"],
+    "Events": ["event_hhn", "event_epic_universe_open"],
+}
 HOURS_FEATURES = ["open_hours", "has_extra_hours"]
 WEATHER_FEATURES = ["temperature_2m_max", "apparent_temperature_max", "precipitation_sum", "precipitation_hours"]
 
@@ -101,6 +111,32 @@ def score(actual, pred):
     ok = ~np.isnan(pred)
     err = np.abs(actual[ok] - pred[ok])
     return {"mae": float(err.mean()), "within_10": float((err <= 10).mean()), "n": int(ok.sum())}
+
+
+def features_for(groups):
+    """Features of the named CALENDAR_GROUPS, in CALENDAR_FEATURES order; the first group is always included."""
+    first = next(iter(CALENDAR_GROUPS))
+    return [f for g, fs in CALENDAR_GROUPS.items() if g == first or g in groups for f in fs]
+
+
+def backtest_predictions(df, features, params=None, test_years=(2023, 2024, 2025, 2026)):
+    """Out-of-time backtest with one row per park-day scored: train on every earlier day, predict the year.
+
+    Returns (predictions, importance): park_id, date, test_year, actual, pred; and each feature's share
+    of the gain, averaged over the test years' models.
+    """
+    dates = pd.to_datetime(df["date"])
+    rows, gains = [], []
+    for year in test_years:
+        train, test = df[dates.dt.year < year], df[dates.dt.year == year].dropna(subset=["crowd_percent"])
+        model = fit(train, features, params)
+        rows.append(test[["park_id", "date"]].assign(actual=test["crowd_percent"].to_numpy(),
+                                                     pred=predict(model, test, features), test_year=year))
+        gains.append(pd.Series(model.booster_.feature_importance("gain"), index=features))
+    preds = pd.concat(rows, ignore_index=True)
+    preds["park_id"] = preds["park_id"].astype(int)
+    importance = pd.concat(gains, axis=1).mean(axis=1)
+    return preds, (importance / importance.sum()).sort_values(ascending=False)
 
 
 def backtest(df, test_years, feature_sets=FEATURE_SETS):

@@ -48,16 +48,18 @@ def mae_by_year(frame):
     return alt.layer(line, points, labels).properties(height=320)
 
 
-def importance(series, top=12):
-    """Share of the model's total gain per feature, the top `top` features, one colour."""
+def importance(series, top=12, champion=False):
+    """Share of the model's total gain per feature, the top `top` features, in the model's slot colour."""
     frame = series.head(top).rename("share").rename_axis("feature").reset_index()
-    y = alt.Y("feature:N", title=None, sort=frame["feature"].tolist(), axis=alt.Axis(ticks=False, domain=False))
+    # labelOverlap off: Vega otherwise drops every other name when rows are tight
+    y = alt.Y("feature:N", title=None, sort=frame["feature"].tolist(),
+              axis=alt.Axis(ticks=False, domain=False, labelOverlap=False, labelLimit=260))
     x = alt.X("share:Q", title="Share of the model's gain", axis=alt.Axis(format="%"))
     base = alt.Chart(frame).encode(x=x, y=y, tooltip=[alt.Tooltip("feature:N", title="Feature"),
                                                        alt.Tooltip("share:Q", title="Share", format=".1%")])
-    bars = base.mark_bar(cornerRadiusEnd=4, height=16, color=SLOTS[1])
+    bars = base.mark_bar(cornerRadiusEnd=4, height=16, color=SLOTS[0] if champion else SLOTS[1])
     text = base.mark_text(align="left", dx=6, color=SUBTEXT, fontSize=12).encode(text=alt.Text("share:Q", format=".0%"))
-    return alt.layer(bars, text).properties(height=26 * len(frame))
+    return alt.layer(bars, text).properties(height=30 * len(frame))
 
 
 def prediction_lines(frame):
@@ -108,7 +110,7 @@ def contributions(frame):
 
     `frame`: group, points. Bars grow from zero, one colour; the sign is the direction, labelled.
     """
-    y = alt.Y("group:N", title=None, sort=frame["group"].tolist(), axis=alt.Axis(ticks=False, domain=False, labelLimit=220))
+    y = alt.Y("group:N", title=None, sort=frame["group"].tolist(), axis=alt.Axis(ticks=False, domain=False, labelLimit=220, labelOverlap=False))
     x = alt.X("points:Q", title="Push on the prediction, crowd points")
     base = alt.Chart(frame).encode(x=x, y=y, tooltip=[alt.Tooltip("group:N", title="Features"),
                                                        alt.Tooltip("points:Q", title="Points", format="+.1f")])
@@ -124,7 +126,7 @@ def contributions(frame):
 
 def weights(frame):
     """Synthetic-control weights per comparison park, one colour."""
-    y = alt.Y("park:N", title=None, sort=frame["park"].tolist(), axis=alt.Axis(ticks=False, domain=False, labelLimit=260))
+    y = alt.Y("park:N", title=None, sort=frame["park"].tolist(), axis=alt.Axis(ticks=False, domain=False, labelLimit=260, labelOverlap=False))
     x = alt.X("weight:Q", title="Weight in the no-Epic estimate", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 1]))
     base = alt.Chart(frame).encode(x=x, y=y, tooltip=[alt.Tooltip("park:N", title="Park"),
                                                        alt.Tooltip("weight:Q", title="Weight", format=".0%")])

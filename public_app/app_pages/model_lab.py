@@ -5,16 +5,28 @@ import cached
 import lab
 import viz
 
-LEARNING_RATES = [0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2]
-DEFAULTS = {"n_estimators": lab.CHAMPION_PARAMS["n_estimators"], "learning_rate": lab.CHAMPION_PARAMS["learning_rate"],
-            "num_leaves": lab.CHAMPION_PARAMS["num_leaves"], "min_child_samples": lab.CHAMPION_PARAMS["min_child_samples"],
-            "subsample": lab.CHAMPION_PARAMS["subsample"], "colsample_bytree": lab.CHAMPION_PARAMS["colsample_bytree"],
-            "objective": "Absolute error (L1)", "groups": lab.CHAMPION_GROUPS}
+SCORE_ON = {"All test years, 2023-2026": lab.TEST_YEARS, "2025-2026 only": [2025, 2026]}
+# Sliders hold the exact preset values (they don't snap to their step); depth 0 on the slider means no limit
+SLIDERS = ["n_estimators", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree",
+           "max_depth", "reg_alpha", "reg_lambda"]
+
+
+def load(values, groups, score_on):
+    for key in SLIDERS:
+        value = values[key]
+        st.session_state[f"lab_{key}"] = 0 if key == "max_depth" and value == -1 else value
+    st.session_state["lab_objective"] = "Absolute error (L1)"
+    st.session_state["lab_groups"] = list(groups)
+    st.session_state["lab_score_on"] = score_on
 
 
 def reset():
-    for key, value in DEFAULTS.items():
-        st.session_state[f"lab_{key}"] = value
+    load(lab.CHAMPION_PARAMS, lab.CHAMPION_GROUPS, "All test years, 2023-2026")
+
+
+def load_optuna():
+    # Optuna chose these on 2023-2024, so only 2025-2026 is a fair test of them
+    load(lab.OPTUNA_PARAMS, lab.CHAMPION_GROUPS, "2025-2026 only")
 
 
 if "lab_n_estimators" not in st.session_state:
@@ -28,19 +40,25 @@ with st.form("lab"):
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.subheader("Settings", anchor=False)
-        a, b = st.columns(2)
-        a.slider("Trees", 50, 1500, step=50, key="lab_n_estimators",
+        a, b, c = st.columns(3)
+        a.slider("Trees", 50, 1500, step=10, key="lab_n_estimators",
                  help="How many small trees the model adds up. More trees fit more detail, and take longer.")
-        b.select_slider("Learning rate", LEARNING_RATES, key="lab_learning_rate",
-                        help="How much each tree corrects the ones before it. Lower needs more trees.")
-        a.slider("Leaves per tree", 4, 128, key="lab_num_leaves",
+        b.slider("Learning rate", 0.005, 0.2, step=0.005, format="%.4f", key="lab_learning_rate",
+                 help="How much each tree corrects the ones before it. Lower needs more trees.")
+        c.slider("Leaves per tree", 4, 128, key="lab_num_leaves",
                  help="How many groups each tree can split days into. More leaves = more complex trees.")
-        b.slider("Minimum days per leaf", 5, 200, step=5, key="lab_min_child_samples",
+        a.slider("Maximum depth", 0, 12, key="lab_max_depth",
+                 help="How many splits deep a tree may go; 0 means no limit (the champion's setting).")
+        b.slider("Minimum days per leaf", 5, 200, key="lab_min_child_samples",
                  help="A leaf needs at least this many training days. Higher = smoother, less overfitting.")
-        a.slider("Days sampled per tree", 0.5, 1.0, step=0.05, key="lab_subsample",
+        c.slider("Days sampled per tree", 0.5, 1.0, step=0.01, key="lab_subsample",
                  help="Share of training days each tree sees (bagging).")
-        b.slider("Features sampled per tree", 0.3, 1.0, step=0.05, key="lab_colsample_bytree",
+        a.slider("Features sampled per tree", 0.3, 1.0, step=0.01, key="lab_colsample_bytree",
                  help="Share of features each tree may use.")
+        b.slider("L1 penalty", 0.0, 5.0, step=0.1, format="%.2f", key="lab_reg_alpha",
+                 help="Pushes small leaf values to zero. 0 for the champion.")
+        c.slider("L2 penalty", 0.0, 5.0, step=0.1, format="%.2f", key="lab_reg_lambda",
+                 help="Shrinks every leaf value. 0 for the champion.")
     with right:
         st.subheader("Features", anchor=False)
         st.pills("Feature groups", list(lab.FEATURE_GROUPS), selection_mode="multi", key="lab_groups",
@@ -50,43 +68,66 @@ with st.form("lab"):
                              help="What training minimizes. The champion uses absolute error, the same measure the "
                                   "backtest reports.")
     st.form_submit_button("Retrain and backtest", type="primary", icon=":material/model_training:")
-st.button("Reset to the champion", icon=":material/restart_alt:", on_click=reset)
+with st.container(horizontal=True):
+    st.button("Reset to the champion", icon=":material/restart_alt:", on_click=reset)
+    st.button("Load Optuna's best", icon=":material/auto_awesome:", on_click=load_optuna,
+              help="The best of 100 Optuna trials run in Databricks, tuned on 2023-2024. Loads its settings and "
+                   "scores on 2025-2026 only; click Retrain and backtest.")
 
 groups = tuple(g for g in lab.FEATURE_GROUPS
                if g == "Park, season and weekday" or g in (st.session_state["lab_groups"] or []))
-params = {k: st.session_state[f"lab_{k}"] for k in lab.CHAMPION_PARAMS}
+params = {k: st.session_state[f"lab_{k}"] for k in SLIDERS}
+params["max_depth"] = params["max_depth"] or -1
 params["objective"] = lab.OBJECTIVES[st.session_state["lab_objective"]]
 
+champion = (tuple(lab.CHAMPION_GROUPS), tuple(sorted({**lab.CHAMPION_PARAMS, "objective": "regression_l1"}.items())))
+mine_key = (groups, tuple(sorted(params.items())))
+is_champion = mine_key == champion   # then "your model" is the champion, line for line
+is_optuna = mine_key == (tuple(lab.CHAMPION_GROUPS), tuple(sorted({**lab.OPTUNA_PARAMS, "objective": "regression_l1"}.items())))
+
 with st.spinner("Training four models, one per test year..."):
-    champ_preds, _, _ = cached.backtest(tuple(lab.CHAMPION_GROUPS), tuple(sorted(
-        {**lab.CHAMPION_PARAMS, "objective": "regression_l1"}.items())))
-    preds, importance, seconds = cached.backtest(groups, tuple(sorted(params.items())))
+    champ_preds, _, _ = cached.backtest(*champion)
+    preds, importance, seconds = cached.backtest(*mine_key)
 base = cached.baselines()
 
 yours_by_year = lab.mae_by_year(preds).assign(method=viz.YOURS)
 champ_by_year = lab.mae_by_year(champ_preds).assign(method=viz.CHAMPION)
-yours_mae = float((preds["actual"] - preds["pred"]).abs().mean())
-champ_mae = float((champ_preds["actual"] - champ_preds["pred"]).abs().mean())
-base_mae = base.groupby("method")["mae"].mean()
-boot = lab.block_bootstrap(preds, champ_preds)
+
+score_on = st.segmented_control("Score on", list(SCORE_ON), key="lab_score_on", required=True,
+                                help="Settings tuned on some test years look better on those years. Score a tuned "
+                                     "model only on years its tuning never saw.")
+years = SCORE_ON[score_on]
+scored, champ_scored = preds[preds["test_year"].isin(years)], champ_preds[champ_preds["test_year"].isin(years)]
+yours_mae = float((scored["actual"] - scored["pred"]).abs().mean())
+champ_mae = float((champ_scored["actual"] - champ_scored["pred"]).abs().mean())
+base_mae = base[base["test_year"].isin(years)].groupby("method")["mae"].mean()
+boot = lab.block_bootstrap(scored, champ_scored)
 outcome, sentence = lab.verdict(boot)
+if is_optuna:
+    st.caption(f"Optuna's best: the top trial of a 100-trial study in Databricks (MLflow run `{lab.OPTUNA_RUN[:8]}`), "
+               "tuned on 2023-2024. Scored on all years it would look better than it is.")
 
 st.subheader("How your model did", anchor=False)
 with st.container(horizontal=True):
     st.metric("Your model, average error", f"{yours_mae:.2f} points", border=True,
               delta=f"{yours_mae - champ_mae:+.2f} vs. champion", delta_color="inverse",
-              help="Mean absolute error over every park-day in 2023-2026: how far a day's prediction typically lands "
+              help="Mean absolute error over every scored park-day: how far a day's prediction typically lands "
                    "from the measured crowd score (0-100).")
     st.metric("Champion", f"{champ_mae:.2f} points", border=True)
     st.metric(f"Best baseline: {base_mae.idxmin().lower()}", f"{base_mae.min():.2f} points", border=True,
               help="Simple rules any forecast should beat.")
     st.metric("Training time", f"{seconds:.1f} s", border=True, help="Four models, one per test year, in this app.")
 
-alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
-alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
-      title={"better": "Better than the champion", "worse": "Worse than the champion",
-             "tie": "No real difference"}[outcome],
-      icon={"better": ":material/trending_down:", "worse": ":material/trending_up:", "tie": ":material/balance:"}[outcome])
+if is_champion:
+    st.info("Change a setting or a feature group and click Retrain and backtest to compare your model with it.",
+            title="These are the champion's settings", icon=":material/tune:")
+else:
+    alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
+    alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
+          title={"better": "Better than the champion", "worse": "Worse than the champion",
+                 "tie": "No real difference"}[outcome],
+          icon={"better": ":material/trending_down:", "worse": ":material/trending_up:",
+                "tie": ":material/balance:"}[outcome])
 
 with st.expander("About this test: a paired block bootstrap", icon=":material/science:"):
     st.markdown(f"""
@@ -109,7 +150,7 @@ verdict holds as the blocks grow, it doesn't hinge on that assumption.
 """)
     rows = []
     for days in (7, 14, 28):
-        b = lab.block_bootstrap(preds, champ_preds, block_days=days)
+        b = lab.block_bootstrap(scored, champ_scored, block_days=days)
         rows.append({"Block length": f"{days} days", "Blocks": b["blocks"], "Difference": b["diff"],
                      "95% interval, low": b["lo"], "95% interval, high": b["hi"], "Verdict": lab.verdict(b)[0]})
     st.dataframe(pd.DataFrame(rows), hide_index=True, alt="Bootstrap interval for three block lengths",
@@ -119,7 +160,7 @@ verdict holds as the blocks grow, it doesn't hinge on that assumption.
 st.subheader("Error by test year", anchor=False)
 st.caption("Lower is better. The two grey lines are the baselines. Every year is a model trained only on earlier days; "
            "2026 runs through the snapshot date.")
-frame = pd.concat([yours_by_year, champ_by_year, base], ignore_index=True)
+frame = pd.concat(([] if is_champion else [yours_by_year]) + [champ_by_year, base], ignore_index=True)
 st.altair_chart(viz.mae_by_year(frame), alt="Backtest error by test year for your model, the champion and two baselines")
 
 left, right = st.columns([3, 2], gap="large")
@@ -142,11 +183,11 @@ with left:
         lines = pd.concat([
             mine.assign(series=viz.MEASURED, value=mine["actual"]),
             champ.assign(series=viz.CHAMPION, value=champ["pred"]),
-            mine.assign(series=viz.YOURS, value=mine["pred"]),
+            *([] if is_champion else [mine.assign(series=viz.YOURS, value=mine["pred"])]),
         ])[["date", "series", "value"]]
         st.altair_chart(viz.prediction_lines(lines), alt=f"Daily measured crowd score and predictions, {park}, {year}")
 with right:
-    st.subheader("What your model leans on", anchor=False)
+    st.subheader("What the champion leans on" if is_champion else "What your model leans on", anchor=False)
     st.caption("Share of the model's total gain (how much each feature's splits cut the error), averaged over the "
                "four test-year models.")
-    st.altair_chart(viz.importance(importance), alt="Feature importance for your model")
+    st.altair_chart(viz.importance(importance, champion=is_champion), alt="Feature importance for your model")

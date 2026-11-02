@@ -7,7 +7,9 @@
 # MAGIC all measured days and registers it in Unity Catalog with the `champion` alias.
 # MAGIC
 # MAGIC The production feature set is calendar-only: in the backtest, park hours and weather added
-# MAGIC nothing measurable, and calendar features exist for any horizon.
+# MAGIC nothing measurable, and calendar features exist for any horizon. The production model uses the
+# MAGIC latest settings the tuning job (10) promoted into `forecast_settings`, or the repo's `LGBM_PARAMS`
+# MAGIC when it has promoted none.
 
 # COMMAND ----------
 
@@ -32,8 +34,9 @@ from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 
 import parks_lib
-from parks_lib.forecast import CALENDAR_FEATURES, FEATURE_SETS, backtest, build_frame, fit
+from parks_lib.forecast import FEATURE_SETS, backtest, build_frame, fit
 from parks_lib.serving import CrowdForecastModel
+from parks_lib.tuning import current_settings
 
 mlflow.set_registry_uri("databricks-uc")
 user = spark.sql("SELECT current_user()").first()[0]
@@ -49,7 +52,10 @@ print("Measured days per park:", df.groupby("park_id", observed=True)["crowd_per
 # COMMAND ----------
 
 test_years = [y for y in range(2023, date.today().year + 1)]
-production_features = CALENDAR_FEATURES
+settings_table = f"{catalog}.{schema}.forecast_settings"
+history = spark.table(settings_table).toPandas() if spark.catalog.tableExists(settings_table) else None
+production_params, production_features, settings_source = current_settings(history)
+print(f"Production settings: {settings_source}")
 
 with mlflow.start_run(run_name="crowd-forecast") as run:
     results = backtest(df, test_years)
@@ -59,8 +65,9 @@ with mlflow.start_run(run_name="crowd-forecast") as run:
         mlflow.log_metrics({f"mae_{r.test_year}_{key}": r.mae, f"within10_{r.test_year}_{key}": r.within_10})
     display(results.pivot(index="method", columns="test_year", values="mae").round(1).reset_index())
 
-    model = fit(df, production_features)
-    mlflow.log_params({"features": ",".join(production_features), "train_rows": int(df["crowd_percent"].notna().sum()),
+    model = fit(df, production_features, production_params)
+    mlflow.log_params({"features": ",".join(production_features), "settings": settings_source,
+                       **{f"param_{k}": v for k, v in production_params.items()}, "train_rows": int(df["crowd_percent"].notna().sum()),
                        "train_end": str(df.dropna(subset=["crowd_percent"])["date"].max()), "test_years": test_years})
     sample = df.dropna(subset=["crowd_percent"]).tail(50)[production_features].astype({"park_id": int})
     wrapped = CrowdForecastModel(model, production_features)

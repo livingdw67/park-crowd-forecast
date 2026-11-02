@@ -17,28 +17,31 @@ for path in (ROOT / "databricks" / "src", ROOT / "databricks" / "app"):  # parks
         sys.path.insert(0, str(path))
 
 from parks_lib.causal import deseasonalize, months_between, placebo_test  # noqa: E402
-from parks_lib.forecast import LGBM_PARAMS, fit, predict, profile_mean, seasonal_naive  # noqa: E402
+from parks_lib.evaluation import block_bootstrap  # noqa: E402,F401  (the pages call it as lab.block_bootstrap)
+from parks_lib.forecast import (CALENDAR_GROUPS, HOURS_FEATURES, LGBM_PARAMS, WEATHER_FEATURES,  # noqa: E402
+                                backtest_predictions, fit, predict, profile_mean, seasonal_naive)
 
 DATA = APP_DIR / "data"
 PARKS = {65: "Universal Studios Florida", 64: "Islands of Adventure", 334: "Epic Universe", 67: "Volcano Bay"}
 TEST_YEARS = [2023, 2024, 2025, 2026]
 
-# Feature groups the lab can switch on and off. The first is always on: without the park, season and
-# weekday the model has nothing to work with. The champion (production model) uses the first four.
-FEATURE_GROUPS = {
-    "Park, season and weekday": ["park_id", "year", "month", "day_of_year", "week_of_year", "day_of_week",
-                                 "is_weekend"],
-    "Holidays": ["is_holiday", "is_holiday_weekend", "days_to_next_holiday", "days_since_last_holiday"],
-    "School breaks": ["thanksgiving_week", "winter_break", "spring_break_season", "easter_week", "fl_spring_break",
-                      "fl_summer", "us_summer"],
-    "Events": ["event_hhn", "event_epic_universe_open"],
-    "Park hours": ["open_hours", "has_extra_hours"],
-    "Weather": ["temperature_2m_max", "apparent_temperature_max", "precipitation_sum", "precipitation_hours"],
-}
-CHAMPION_GROUPS = ["Park, season and weekday", "Holidays", "School breaks", "Events"]
-# The settings the lab exposes, at the champion's values
-CHAMPION_PARAMS = {k: LGBM_PARAMS[k] for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples",
-                                               "subsample", "colsample_bytree")}
+# Feature groups the lab can switch on and off: the calendar groups the tuning job searches, plus the two
+# measured ones. The first is always on. The champion (production model) uses the four calendar groups.
+FEATURE_GROUPS = {**CALENDAR_GROUPS, "Park hours": HOURS_FEATURES, "Weather": WEATHER_FEATURES}
+CHAMPION_GROUPS = list(CALENDAR_GROUPS)
+# The settings the lab exposes, at the champion's values. LGBM_PARAMS leaves depth and regularization at
+# LightGBM's defaults (no depth limit, no L1/L2 penalty); they are spelled out so a preset can change them.
+CHAMPION_PARAMS = {**{k: LGBM_PARAMS[k] for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples",
+                                                  "subsample", "colsample_bytree")},
+                   "max_depth": -1, "reg_alpha": 0.0, "reg_lambda": 0.0}
+# Best trial of the 100-trial Optuna study run in Databricks on 2026-10-22 (MLflow run
+# e45c4b4427e444628df292d66c0d7c0c, "crowd-forecast-tuned-2023-2024"): tuned on test years 2023-2024 only,
+# champion features, absolute-error loss. Exact values: rounding them moves the 2025-2026 result.
+OPTUNA_RUN = "e45c4b4427e444628df292d66c0d7c0c"
+OPTUNA_TUNED_ON = [2023, 2024]
+OPTUNA_PARAMS = {"n_estimators": 860, "learning_rate": 0.0452130149175768, "num_leaves": 56, "max_depth": 5,
+                 "min_child_samples": 6, "subsample": 0.8788647169098125, "colsample_bytree": 0.6086232578580403,
+                 "reg_alpha": 1.0038881495789473, "reg_lambda": 2.446785580104569}
 OBJECTIVES = {"Absolute error (L1)": "regression_l1", "Squared error (L2)": "regression", "Huber": "huber"}
 
 # Why-this-day explanation: model features grouped the way a reader thinks about a day
@@ -91,23 +94,8 @@ def features_for(groups):
 # ---------------------------------------------------------------------------------------- model lab
 
 def run_backtest(df, features, params, test_years=TEST_YEARS):
-    """Out-of-time backtest with per-day predictions: for each test year, train on every earlier day.
-
-    Returns (predictions, importance): one row per park-day scored, with `actual` and `pred`, and
-    the gain importance per feature averaged over the test years' models.
-    """
-    dates = pd.to_datetime(df["date"])
-    rows, gains = [], []
-    for year in test_years:
-        train, test = df[dates.dt.year < year], df[dates.dt.year == year]
-        model = fit(train, features, params)
-        rows.append(test[["park_id", "date"]].assign(actual=test["crowd_percent"].to_numpy(),
-                                                     pred=predict(model, test, features), test_year=year))
-        gains.append(pd.Series(model.booster_.feature_importance("gain"), index=features))
-    preds = pd.concat(rows, ignore_index=True)
-    preds["park_id"] = preds["park_id"].astype(int)
-    importance = pd.concat(gains, axis=1).mean(axis=1)
-    return preds, (importance / importance.sum()).sort_values(ascending=False)
+    """(per-day predictions, gain importance): parks_lib's backtest, the one the tuning job runs."""
+    return backtest_predictions(df, features, params, test_years)
 
 
 def baselines(df, test_years=TEST_YEARS):
@@ -127,25 +115,6 @@ def baselines(df, test_years=TEST_YEARS):
 def mae_by_year(preds):
     return (preds.assign(err=(preds["actual"] - preds["pred"]).abs())
             .groupby("test_year")["err"].mean().rename("mae").reset_index())
-
-
-def block_bootstrap(yours, champion, block_days=7, n_boot=4000, seed=0):
-    """Paired block bootstrap of the MAE difference (yours minus champion) over the same test days.
-
-    Days are grouped into blocks of `block_days` consecutive days (all parks together), and whole
-    blocks are resampled, so errors that move together within a stretch of days (a holiday week, a
-    hurricane) stay together. Returns the observed difference and its 95% percentile interval.
-    """
-    keys = ["park_id", "date"]
-    both = yours[keys + ["actual", "pred"]].merge(champion[keys + ["pred"]], on=keys, suffixes=("", "_champ"))
-    d = (both["actual"] - both["pred"]).abs() - (both["actual"] - both["pred_champ"]).abs()
-    day = (pd.to_datetime(both["date"]) - pd.Timestamp("2000-01-03")).dt.days
-    blocks = pd.DataFrame({"block": day // block_days, "d": d}).groupby("block")["d"].agg(["sum", "count"])
-    sums, counts = blocks["sum"].to_numpy(), blocks["count"].to_numpy()
-    idx = np.random.default_rng(seed).integers(0, len(blocks), size=(n_boot, len(blocks)))
-    boot = sums[idx].sum(axis=1) / counts[idx].sum(axis=1)
-    lo, hi = np.percentile(boot, [2.5, 97.5])
-    return {"diff": float(d.mean()), "lo": float(lo), "hi": float(hi), "days": int(len(d)), "blocks": int(len(blocks))}
 
 
 def verdict(boot):
