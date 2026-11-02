@@ -118,3 +118,25 @@ def test_lab_on_champion_settings_says_so():
     assert not at.exception
     assert any("Retrain and backtest" in i.value for i in at.info)   # the "these are the champion's settings" note
     assert at.metric[0].value == at.metric[1].value
+
+
+def test_spelled_out_defaults_leave_the_champion_unchanged(daily):
+    features = lab.features_for(lab.CHAMPION_GROUPS)
+    rows = daily.sample(50, random_state=1)
+    plain = lab.fit(daily, features, {"n_estimators": 60})
+    spelled = lab.fit(daily, features, {**lab.CHAMPION_PARAMS, "n_estimators": 60})
+    np.testing.assert_array_equal(lab.predict(plain, rows, features), lab.predict(spelled, rows, features))
+
+
+def test_optuna_preset_scores_only_unseen_years():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(APP / "streamlit_app.py"), default_timeout=180)
+    at.run()
+    next(b for b in at.button if b.label == "Load Optuna's best").click().run()
+    assert at.slider(key="lab_learning_rate").value == lab.OPTUNA_PARAMS["learning_rate"]   # exact, not snapped
+    next(b for b in at.button if b.label == "Retrain and backtest").click().run()
+    assert not at.exception, at.exception
+    assert at.segmented_control(key="lab_score_on").value == "2025-2026 only"
+    assert any("Optuna's best" in c.value for c in at.caption)
+    assert at.metric[0].value != at.metric[1].value

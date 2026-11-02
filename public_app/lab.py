@@ -36,9 +36,19 @@ FEATURE_GROUPS = {
     "Weather": ["temperature_2m_max", "apparent_temperature_max", "precipitation_sum", "precipitation_hours"],
 }
 CHAMPION_GROUPS = ["Park, season and weekday", "Holidays", "School breaks", "Events"]
-# The settings the lab exposes, at the champion's values
-CHAMPION_PARAMS = {k: LGBM_PARAMS[k] for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples",
-                                               "subsample", "colsample_bytree")}
+# The settings the lab exposes, at the champion's values. LGBM_PARAMS leaves depth and regularization at
+# LightGBM's defaults (no depth limit, no L1/L2 penalty); they are spelled out so a preset can change them.
+CHAMPION_PARAMS = {**{k: LGBM_PARAMS[k] for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples",
+                                                  "subsample", "colsample_bytree")},
+                   "max_depth": -1, "reg_alpha": 0.0, "reg_lambda": 0.0}
+# Best trial of the 100-trial Optuna study run in Databricks on 2026-10-22 (MLflow run
+# e45c4b4427e444628df292d66c0d7c0c, "crowd-forecast-tuned-2023-2024"): tuned on test years 2023-2024 only,
+# champion features, absolute-error loss. Exact values: rounding them moves the 2025-2026 result.
+OPTUNA_RUN = "e45c4b4427e444628df292d66c0d7c0c"
+OPTUNA_TUNED_ON = [2023, 2024]
+OPTUNA_PARAMS = {"n_estimators": 860, "learning_rate": 0.0452130149175768, "num_leaves": 56, "max_depth": 5,
+                 "min_child_samples": 6, "subsample": 0.8788647169098125, "colsample_bytree": 0.6086232578580403,
+                 "reg_alpha": 1.0038881495789473, "reg_lambda": 2.446785580104569}
 OBJECTIVES = {"Absolute error (L1)": "regression_l1", "Squared error (L2)": "regression", "Huber": "huber"}
 
 # Why-this-day explanation: model features grouped the way a reader thinks about a day
