@@ -111,6 +111,23 @@ What this says:
 into `crowd_forecast` (latest) and `crowd_forecast_history` (every run, for tracking accuracy later),
 next to queue-times' own forecast where they publish one.
 
+**Tuning.** `tune-forecast` (on demand, [10_tune_forecast.py](databricks/src/10_tune_forecast.py)) runs an
+Optuna search over LightGBM's settings and the calendar feature groups, scored on 2023-2024 only, with each
+trial a nested MLflow run and weak trials stopped after their first year. It then looks once at 2025 onward,
+which the search never saw, against the settings production uses, and registers the refit as
+`crowd_forecast@challenger`. The challenger becomes `@champion` only if a paired block bootstrap puts the
+whole 95% interval for its error difference below zero. Every run is logged to `forecast_settings`, and
+`train-forecast` retrains with the latest promoted settings, so a promotion survives the weekly retrain.
+
+| Study | Trials | MAE 2023-2024 (tuned on) | MAE 2025-2026 (unseen) vs production | 95% interval | Promoted |
+|---|---|---|---|---|---|
+| 2026-10-22 (first study, Assistant notebook) | 100 | 13.81 vs 14.14 | 17.39 vs 17.49 | -0.42 to +0.18 | no |
+| 2026-11-02 (`tune-forecast`) | 60 (21 stopped early) | 13.92 vs 14.14 | 17.50 vs 17.52 | -0.30 to +0.24 | no |
+
+Tuning buys about 0.3 points on the years it tunes on and nothing reliable on years it hasn't seen: the
+error sits near the score's own day-to-day noise, so better features or a better target are the way forward,
+not settings. The public app's model lab can load the first study's best settings to check this live.
+
 `daily_crowd_index` is the transparent alternative: average posted wait across open rides between
 11am and 5pm, without single-rider lines and Halloween Horror Nights houses. It needs a few weeks of
 hourly data before it can be compared with the queue-times score.
@@ -271,7 +288,8 @@ features, monthly averages per park, and the 90-day forecast; no scraped pages o
 
 - **Model lab:** change LightGBM's settings, the loss and the feature groups, retrain, and compare the
   backtest with the champion and the baselines. A paired block bootstrap says whether your model is really
-  better or worse, with a check across block lengths.
+  better or worse, with a check across block lengths. "Load Optuna's best" loads the tuning study's best
+  settings and scores them only on 2025-2026, the years the tuning never saw.
 - **Crowd explorer:** every measured day since 2018 as a calendar per park and year. Click a day to see
   which feature groups pushed its estimate up or down (SHAP values), plus the next 90 days' forecast.
 - **Epic Universe impact:** rerun the impact study live: pick the park, method, comparison parks and
