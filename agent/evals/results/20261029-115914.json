@@ -1,0 +1,63 @@
+{
+ "summary": {
+  "questions": 2,
+  "passed": 2,
+  "cost_usd": 0.0047,
+  "by_check": {
+   "route": "2/2",
+   "tools": "0/0",
+   "grounded": "1/1",
+   "no_error": "2/2"
+  },
+  "providers": [
+   "openai"
+  ]
+ },
+ "results": [
+  {
+   "id": "e01",
+   "question": "How busy will Universal Studios Florida be on March 15, 2027?",
+   "passed": true,
+   "checks": {
+    "route": true,
+    "grounded": true,
+    "no_error": true
+   },
+   "route": "forecast",
+   "tools_called": [
+    [
+     "forecast",
+     "get_forecast",
+     true
+    ]
+   ],
+   "ungrounded": [],
+   "answer": "I can\u2019t forecast how busy Universal Studios Florida will be on that date because it\u2019s outside the available forecast window.\n\n- The available forecast window does not reach that date.\n- I can help with a nearby date that is within range.\n- I can also give a qualitative March seasonality guess if you want one without tool-backed numbers.",
+   "errors": [],
+   "seconds": 8.0,
+   "cost_usd": 0.004164,
+   "models": [
+    "gpt-5.4-mini"
+   ]
+  },
+  {
+   "id": "o03",
+   "question": "How busy will Magic Kingdom be on Saturday?",
+   "passed": true,
+   "checks": {
+    "route": true,
+    "no_error": true
+   },
+   "route": "out_of_scope",
+   "tools_called": [],
+   "ungrounded": [],
+   "answer": "I can answer questions about crowd forecasts and staffing plans for Universal Studios Florida, Islands of Adventure, Epic Universe and Volcano Bay. That question is outside what I cover.",
+   "errors": [],
+   "seconds": 1.4,
+   "cost_usd": 0.00054,
+   "models": [
+    "gpt-5.4-mini"
+   ]
+  }
+ ]
+}

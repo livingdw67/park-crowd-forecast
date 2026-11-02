@@ -1,0 +1,5 @@
+logs/
+snapshot/
+distill/data/
+distill/models/
+distill/.venv/

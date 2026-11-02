@@ -1,7 +1,8 @@
 # Park Crowd Forecast
 
 Forecasts daily crowd levels at the Universal Orlando parks and turns the forecast into a staffing
-plan. Built on Databricks (Delta tables, Unity Catalog, MLflow) with a Streamlit front end.
+plan. Built on Databricks (Delta tables, Unity Catalog, MLflow) with a Streamlit front end, plus an
+agent that answers questions about the forecast and staffing plans from the same data and optimizer.
 
 Daily park attendance isn't published (only annual totals), so ride wait times stand in for it.
 The crowd index is built from them, and the forecast should be read as "how busy relative to
@@ -18,10 +19,10 @@ other days", not a headcount.
 | 1e | Staffing optimizer (OR-Tools MILP) planning 14 days from the forecast | Live since 2026-10-22 |
 | 1f | Streamlit app on Databricks Apps: crowd calendar, staffing plan, what-if scenarios | Live since 2026-10-22 |
 | 1g | Epic Universe impact study: difference-in-differences and synthetic control with placebo tests | Live since 2026-10-27 |
-| 2 | Agent that explains forecast changes and re-plans staffing, with an eval suite | Later |
+| 2 | Agent that explains forecasts and re-plans staffing, with an AI gateway, streaming API and eval suite ([agent/](agent/)) | Built 2026-10-29; distilling a local writer model in progress |
 
-Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs
-so phase 2 can call them as agent tools.
+Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs,
+so the agent calls the same code as agent tools.
 
 ## Data
 
@@ -242,6 +243,20 @@ set DATABRICKS_WAREHOUSE_ID=<warehouse id>
 `ortools==9.11` needs protobuf 5.26, so the app pins `databricks-sdk==0.72.0`, the newest release
 that allows it ([databricks/requirements.txt](databricks/requirements.txt)).
 
+## Agent
+
+[agent/](agent/) answers questions such as "Why is next Friday so busy?" or "What would it cost to
+staff Islands of Adventure for a crowd score of 80?". A supervisor routes each question to a forecast
+analyst, a staffing planner or both; they call five tools over a snapshot of the Databricks tables
+(the staffing tools run the same OR-Tools optimizer as the daily job); a writer streams the answer;
+and a validator checks that every number in it came from tool output. All model calls go through an
+AI gateway with local-first routing, failover, a circuit breaker and spending caps. A FastAPI service
+streams answers as Server-Sent Events.
+
+A 30-question eval set, graded without a model judge (route, tools, grounded numbers, no errors),
+passes 30/30 on gpt-5.4-mini at about $0.17 a run. Details, load test results and the distillation
+pipeline are in [agent/README.md](agent/README.md).
+
 ## Local development
 
 ```
@@ -250,11 +265,15 @@ python -m venv .venv
 .venv\Scripts\python -m pytest -q tests
 ```
 
+The agent has its own requirements and tests; see [agent/README.md](agent/README.md#run-it).
+
 ## Databricks
 
-The bundle is in [databricks/](databricks/). Free Edition, serverless only.
+The bundle is in [databricks/](databricks/). Free Edition, serverless only. The workspace host comes
+from the CLI profile, so log in once first:
 
 ```
+databricks auth login --host <your workspace URL> --profile free
 cd databricks
 databricks bundle deploy --profile free
 databricks bundle run wait_time_ingest --profile free
@@ -275,3 +294,7 @@ own; that history was fetched from a laptop and copied into the volume to save F
 
 The `wait-time-ingest` job runs hourly 8am-10pm Eastern. Each run saves the raw JSON to the
 `raw_files` volume and merges parsed rows into `raw_wait_times`, keyed on ride and `last_updated`.
+
+## License
+
+MIT; see [LICENSE](LICENSE). Wait-time and crowd data belong to Queue-Times.com and aren't included.
