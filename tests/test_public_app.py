@@ -140,3 +140,24 @@ def test_optuna_preset_scores_only_unseen_years():
     assert at.segmented_control(key="lab_score_on").value == "2025-2026 only"
     assert any("Optuna's best" in c.value for c in at.caption)
     assert at.metric[0].value != at.metric[1].value
+
+
+def test_app_reimports_a_helper_module_that_changed_on_disk():
+    """Community Cloud keeps imported modules across a code pull; the app must notice and reload them."""
+    import os
+    import time
+
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(APP / "streamlit_app.py"), default_timeout=180)
+    at.run()
+    before = sys.modules["lab"]
+    path = APP / "lab.py"
+    stat = path.stat()
+    try:
+        os.utime(path, (stat.st_atime, time.time() + 60))   # as if a pull rewrote lab.py
+        at.run()
+        assert not at.exception
+        assert sys.modules["lab"] is not before
+    finally:
+        os.utime(path, (stat.st_atime, stat.st_mtime))
