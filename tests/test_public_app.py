@@ -161,3 +161,39 @@ def test_app_reimports_a_helper_module_that_changed_on_disk():
         assert sys.modules["lab"] is not before
     finally:
         os.utime(path, (stat.st_atime, stat.st_mtime))
+
+
+def test_suggested_bands_cover_the_best_finished_trials():
+    trials = lab.load_study()["trials"]
+    done = sorted((t for t in trials if t["state"] == "complete"), key=lambda t: t["tuning_mae"])
+    bands = lab.suggested_bands(trials)
+    assert set(bands) == set(lab.OPTUNA_PARAMS)
+    for t in done[:lab.BAND_TRIALS]:
+        assert all(lo <= t["params"][k] <= hi for k, (lo, hi) in bands.items())
+    # a pruned trial stopped after one year, so even a lower error than every finished trial doesn't count
+    pruned = {"state": "pruned", "tuning_mae": 0.0, "params": {k: 10_000 for k in bands}}
+    assert lab.suggested_bands(trials + [pruned]) == bands
+
+
+def test_slider_guides_put_marks_at_the_value_share_of_the_range():
+    import viz
+
+    css = viz.slider_guides({"lab_a": (0, 200), "lab_b": (0, 12)}, {"lab_a": 50, "lab_b": 5},
+                            {"lab_a": (100, 300), "lab_b": (6, 6)})
+    a = next(line for line in css.splitlines() if line.startswith(".st-key-lab_a") and "::after" in line)
+    assert "left: 25.00%" in a                                # Optuna's tick at 50 of 0-200
+    band_a = next(line for line in css.splitlines() if line.startswith(".st-key-lab_a") and "::before" in line)
+    assert "left: 50.00%; width: 50.00%" in band_a            # clipped at the slider's end
+    band_b = next(line for line in css.splitlines() if line.startswith(".st-key-lab_b") and "::before" in line)
+    assert f"width: {viz.MIN_BAND:.2f}%" in band_b            # a one-value band still shows
+
+
+def test_lab_sliders_carry_optuna_marks_and_say_so():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(APP / "streamlit_app.py"), default_timeout=180)
+    at.run()
+    assert not at.exception, at.exception
+    assert "Optuna's best: 860." in at.slider(key="lab_n_estimators").help
+    styles = next(h.value for h in at.html if "<style>" in h.value)
+    assert all(f".st-key-lab_{k} " in styles for k in lab.OPTUNA_PARAMS)

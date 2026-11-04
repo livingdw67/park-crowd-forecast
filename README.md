@@ -126,7 +126,8 @@ whole 95% interval for its error difference below zero. Every run is logged to `
 
 Tuning buys about 0.3 points on the years it tunes on and nothing reliable on years it hasn't seen: the
 error sits near the score's own day-to-day noise, so better features or a better target are the way forward,
-not settings. The public app's model lab can load the first study's best settings to check this live.
+not settings. The public app's model lab can load the first study's best settings to check this live, and
+marks them on its sliders next to bands showing where the second study's 10 best trials landed.
 
 `daily_crowd_index` is the transparent alternative: average posted wait across open rides between
 11am and 5pm, without single-rider lines and Halloween Horror Nights houses. It needs a few weeks of
@@ -283,21 +284,23 @@ pipeline are in [agent/README.md](agent/README.md).
 [public_app/](public_app/) is a Streamlit app anyone can open without a Databricks sign-in, live at
 [park-crowd-forecast.streamlit.app](https://park-crowd-forecast.streamlit.app/). It runs on a
 small snapshot of derived data in [public_app/data/](public_app/data/) (daily crowd scores with the model
-features, monthly averages per park, and the 90-day forecast; no scraped pages or ride waits) and the same
-`parks_lib` code as the jobs. Every model is trained in the app, so clicking costs nothing.
+features, monthly averages per park, the 90-day forecast and the latest tuning study's trials; no scraped
+pages or ride waits) and the same `parks_lib` code as the jobs. Every model is trained in the app, so
+clicking costs nothing.
 
 - **Model lab:** change LightGBM's settings, the loss and the feature groups, retrain, and compare the
   backtest with the champion and the baselines. A paired block bootstrap says whether your model is really
   better or worse, with a check across block lengths. "Load Optuna's best" loads the tuning study's best
-  settings and scores them only on 2025-2026, the years the tuning never saw.
+  settings and scores them only on 2025-2026, the years the tuning never saw. Each slider shows those
+  settings as a violet tick and a suggested band: the range the 10 best of the `tune-forecast` job's 60
+  trials covered (exported from MLflow; `export_data.py --trials-only` refreshes just that file).
 - **Crowd explorer:** every measured day since 2018 as a calendar per park and year. Click a day to see
   which feature groups pushed its estimate up or down (SHAP values), plus the next 90 days' forecast.
 - **Epic Universe impact:** rerun the impact study live: pick the park, method, comparison parks and
   before period, or fake the opening a year early, and the estimate, placebo test and weights update.
 
 ```
-.venv\Scripts\python -m pip install -r public_app
-equirements.txt
+.venv\Scripts\python -m pip install -r public_app\requirements.txt
 .venv\Scripts\streamlit run public_app\streamlit_app.py
 ```
 

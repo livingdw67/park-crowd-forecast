@@ -10,8 +10,11 @@ Only derived data leaves the workspace: no scraped pages, ride waits or raw JSON
 - monthly.parquet: monthly average crowd score per park, Universal and comparison parks
   (parks_lib.causal.monthly_panel), for the Epic Universe impact study
 - forecast.parquet: the champion model's 90-day forecast and queue-times' own forecast
+- optuna_trials.json: every trial of the latest `tune-forecast` study (its nested MLflow runs): settings,
+  state and tuning-years error. The model lab draws its suggested bands from the best of them.
 
-Reads through the first SQL warehouse in the workspace with the CLI profile's credentials.
+Reads tables through the first SQL warehouse in the workspace and MLflow through its API, with the CLI
+profile's credentials. `--trials-only` refreshes just optuna_trials.json, leaving the data snapshot alone.
 """
 
 import json
@@ -43,8 +46,46 @@ QUERIES = {
 }
 
 
-def fetch():
-    w = WorkspaceClient(profile=os.getenv("DATABRICKS_CONFIG_PROFILE", "free"))
+def client():
+    return WorkspaceClient(profile=os.getenv("DATABRICKS_CONFIG_PROFILE", "free"))
+
+
+def optuna_trials(w):
+    """The newest `optuna-crowd-forecast` run (the tune-forecast job) and every trial logged under it."""
+    name = f"/Users/{w.current_user.me().user_name}/park-crowd-forecast"
+    experiment = w.experiments.get_by_name(name).experiment.experiment_id
+    study = next(iter(w.experiments.search_runs(
+        experiment_ids=[experiment], filter="attributes.run_name = 'optuna-crowd-forecast'",
+        order_by=["attributes.start_time DESC"], max_results=1)))
+    study_params = {p.key: p.value for p in study.data.params}
+    trials = []
+    for run in w.experiments.search_runs(experiment_ids=[experiment],
+                                         filter=f"tags.mlflow.parentRunId = '{study.info.run_id}'"):
+        raw = {p.key: p.value for p in run.data.params}
+        params = {k: (float(v) if "." in v or "e" in v else int(v)) for k, v in raw.items() if not k.startswith("use ")}
+        metrics = {m.key: m.value for m in run.data.metrics}
+        trials.append({
+            "number": int(run.info.run_name.split()[-1]),
+            "state": {t.key: t.value for t in run.data.tags}["state"],
+            "tuning_mae": metrics.get("tuning_mae"),
+            "params": params,
+            "groups": {k.removeprefix("use "): v == "True" for k, v in raw.items() if k.startswith("use ")},
+        })
+    return {
+        "run_id": study.info.run_id,
+        "started": datetime.fromtimestamp(study.info.start_time / 1000, timezone.utc).isoformat(timespec="seconds"),
+        "tune_years": json.loads(study_params["tune_years"]),
+        "trials": sorted(trials, key=lambda t: t["number"]),
+    }
+
+
+def write_trials(w):
+    study = optuna_trials(w)
+    (OUT / "optuna_trials.json").write_text(json.dumps(study, indent=1), encoding="utf-8")
+    print(f"optuna_trials: {len(study['trials'])} trials from run {study['run_id']}")
+
+
+def fetch(w):
     warehouse = next(iter(w.warehouses.list()))
     frames = {}
     with sql.connect(server_hostname=w.config.host.removeprefix("https://"),
@@ -69,8 +110,12 @@ def daily(crowd, calendar, weather):
 
 
 def main():
-    frames = fetch()
+    w = client()
     OUT.mkdir(exist_ok=True)
+    write_trials(w)
+    if "--trials-only" in sys.argv:
+        return
+    frames = fetch(w)
 
     days = daily(frames["crowd"], frames["calendar"], frames["weather"])
     days.to_parquet(OUT / "daily.parquet", index=False)

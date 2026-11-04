@@ -135,6 +135,53 @@ def weights(frame):
     return alt.layer(bars, text).properties(height=28 * len(frame))
 
 
+OPTUNA = SLOTS[2]   # the palette's violet: Optuna's best and the suggested bands on the lab's sliders
+BAND_FILL = "rgba(124, 128, 234, 0.38)"   # OPTUNA, faint enough that the track still reads on top of it
+MIN_BAND = 2.0       # percent of the track, so a tight band (5-6 on a 0-12 slider) stays visible
+
+
+def slider_guides(sliders, best, bands):
+    """CSS that draws Optuna's best (a violet tick) and a suggested band (a faint violet bar behind the track)
+    on each slider. No native widget does this, so it targets the sliders' `st-key-<key>` classes.
+
+    `sliders`: widget key -> (min, max). `best`, `bands`: widget key -> value, (low, high).
+    The track fills the width of the slider's positioned inner box and the thumb's centre travels from 0%
+    to 100% of it, so a value's position is its share of the range.
+    """
+    def pct(key, value):
+        lo, hi = sliders[key]
+        return 100 * min(max((value - lo) / (hi - lo), 0), 1)
+
+    rules = []
+    for key in sliders:
+        box = f'.st-key-{key} [data-testid="stSlider"] [role="group"] > div'
+        if key in bands:
+            left, right = pct(key, bands[key][0]), pct(key, bands[key][1])
+            if right - left < MIN_BAND:
+                mid = (left + right) / 2
+                left, right = max(mid - MIN_BAND / 2, 0), min(mid + MIN_BAND / 2, 100)
+            rules.append(f'{box}::before {{content: ""; position: absolute; top: 50%; height: 12px; '
+                         f"transform: translateY(-50%); left: {left:.2f}%; width: {right - left:.2f}%; "
+                         f"background: {BAND_FILL}; border-radius: 6px; pointer-events: none;}}")
+        if key in best:
+            rules.append(f'{box}::after {{content: ""; position: absolute; top: 50%; height: 18px; width: 3px; '
+                         f"transform: translate(-50%, -50%); left: {pct(key, best[key]):.2f}%; background: {OPTUNA}; "
+                         f"border-radius: 2px; box-shadow: 0 0 0 1.5px {SURFACE}; z-index: 1; pointer-events: none;}}")
+            rules.append(f"{box} > div:has(input) {{z-index: 2;}}")   # the thumb stays above the tick
+    return "<style>\n" + "\n".join(rules) + "\n</style>"
+
+
+def slider_legend(band_trials, total_trials):
+    """One line naming the tick and the band, with swatches drawn like the marks themselves."""
+    tick = (f'<span style="display:inline-block;width:3px;height:16px;background:{OPTUNA};border-radius:2px;'
+            'vertical-align:middle;margin-right:8px"></span>')
+    band = (f'<span style="display:inline-block;width:26px;height:12px;background:{BAND_FILL};border-radius:6px;'
+            'vertical-align:middle;margin-right:8px"></span>')
+    return (f'<div style="display:flex;flex-wrap:wrap;gap:0.4rem 1.5rem;font-size:0.875rem;color:{SUBTEXT}">'
+            f"<span>{tick}Optuna's best, what <b>Load Optuna's best</b> loads</span>"
+            f"<span>{band}Suggested: where the {band_trials} best of {total_trials} trials landed</span></div>")
+
+
 impact = charts.impact
 placebo_bars = charts.placebo_bars
 trend = charts.trend

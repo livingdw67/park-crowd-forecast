@@ -6,9 +6,31 @@ import lab
 import viz
 
 SCORE_ON = {"All test years, 2023-2026": lab.TEST_YEARS, "2025-2026 only": [2025, 2026]}
-# Sliders hold the exact preset values (they don't snap to their step); depth 0 on the slider means no limit
-SLIDERS = ["n_estimators", "learning_rate", "num_leaves", "min_child_samples", "subsample", "colsample_bytree",
-           "max_depth", "reg_alpha", "reg_lambda"]
+# setting: (label, min, max, step, format, help), in the order they're laid out, three to a row. Sliders hold
+# the exact preset values (they don't snap to their step); depth 0 on the slider means no limit.
+SLIDERS = {
+    "n_estimators": ("Trees", 50, 1500, 10, None,
+                     "How many small trees the model adds up. More trees fit more detail, and take longer."),
+    "learning_rate": ("Learning rate", 0.005, 0.2, 0.005, "%.4f",
+                      "How much each tree corrects the ones before it. Lower needs more trees."),
+    "num_leaves": ("Leaves per tree", 4, 128, 1, None,
+                   "How many groups each tree can split days into. More leaves = more complex trees."),
+    "max_depth": ("Maximum depth", 0, 12, 1, None,
+                  "How many splits deep a tree may go; 0 means no limit (the champion's setting)."),
+    "min_child_samples": ("Minimum days per leaf", 5, 200, 1, None,
+                          "A leaf needs at least this many training days. Higher = smoother, less overfitting."),
+    "subsample": ("Days sampled per tree", 0.5, 1.0, 0.01, None, "Share of training days each tree sees (bagging)."),
+    "colsample_bytree": ("Features sampled per tree", 0.3, 1.0, 0.01, None, "Share of features each tree may use."),
+    "reg_alpha": ("L1 penalty", 0.0, 5.0, 0.1, "%.2f", "Pushes small leaf values to zero. 0 for the champion."),
+    "reg_lambda": ("L2 penalty", 0.0, 5.0, 0.1, "%.2f", "Shrinks every leaf value. 0 for the champion."),
+}
+STUDY = cached.optuna_study()
+BANDS = lab.suggested_bands(STUDY["trials"])
+OPTUNA_SLIDER = {k: (0 if k == "max_depth" and v == -1 else v) for k, v in lab.OPTUNA_PARAMS.items()}
+
+
+def show(value):
+    return f"{value:,}" if isinstance(value, int) else f"{value:.3g}"
 
 
 def load(values, groups, score_on):
@@ -36,29 +58,29 @@ st.caption("Retrain the crowd forecast with your own settings and see how it doe
            "year (2023 to 2026) is predicted by a model trained only on the days before it, exactly like the weekly "
            "Databricks job. The champion is the production model: LightGBM on calendar features.")
 
+st.html(viz.slider_guides({f"lab_{k}": (lo, hi) for k, (_, lo, hi, *_) in SLIDERS.items()},
+                         {f"lab_{k}": v for k, v in OPTUNA_SLIDER.items()},
+                         {f"lab_{k}": v for k, v in BANDS.items()}))
+
 with st.form("lab"):
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.subheader("Settings", anchor=False)
-        a, b, c = st.columns(3)
-        a.slider("Trees", 50, 1500, step=10, key="lab_n_estimators",
-                 help="How many small trees the model adds up. More trees fit more detail, and take longer.")
-        b.slider("Learning rate", 0.005, 0.2, step=0.005, format="%.4f", key="lab_learning_rate",
-                 help="How much each tree corrects the ones before it. Lower needs more trees.")
-        c.slider("Leaves per tree", 4, 128, key="lab_num_leaves",
-                 help="How many groups each tree can split days into. More leaves = more complex trees.")
-        a.slider("Maximum depth", 0, 12, key="lab_max_depth",
-                 help="How many splits deep a tree may go; 0 means no limit (the champion's setting).")
-        b.slider("Minimum days per leaf", 5, 200, key="lab_min_child_samples",
-                 help="A leaf needs at least this many training days. Higher = smoother, less overfitting.")
-        c.slider("Days sampled per tree", 0.5, 1.0, step=0.01, key="lab_subsample",
-                 help="Share of training days each tree sees (bagging).")
-        a.slider("Features sampled per tree", 0.3, 1.0, step=0.01, key="lab_colsample_bytree",
-                 help="Share of features each tree may use.")
-        b.slider("L1 penalty", 0.0, 5.0, step=0.1, format="%.2f", key="lab_reg_alpha",
-                 help="Pushes small leaf values to zero. 0 for the champion.")
-        c.slider("L2 penalty", 0.0, 5.0, step=0.1, format="%.2f", key="lab_reg_lambda",
-                 help="Shrinks every leaf value. 0 for the champion.")
+        cols = st.columns(3)
+        for i, (key, (label, lo, hi, step, fmt, help_text)) in enumerate(SLIDERS.items()):
+            band = BANDS.get(key)
+            guide = f" Optuna's best: {show(OPTUNA_SLIDER[key])}." + (
+                f" The {lab.BAND_TRIALS} best trials of the latest study: {show(band[0])} to {show(band[1])}."
+                if band else "")
+            cols[i % 3].slider(label, lo, hi, step=step, format=fmt, key=f"lab_{key}", help=help_text + guide)
+        st.html(viz.slider_legend(lab.BAND_TRIALS, len(STUDY["trials"])))
+        outside = [label if label[:2].isupper() else label.lower() for k, (label, *_) in SLIDERS.items()
+                   if k in BANDS and not BANDS[k][0] <= OPTUNA_SLIDER[k] <= BANDS[k][1]]
+        listed = " and ".join([", ".join(outside[:-1]), outside[-1]] if len(outside) > 1 else outside)
+        st.caption(f"The tick comes from the first Optuna study (100 trials), the bands from the tuning job's "
+                   f"later one ({len(STUDY['trials'])} trials, {STUDY['started'][:10]}), which logged every trial. "
+                   + (f"The two disagree on {listed} yet score about the same, so the error barely moves across these "
+                      "ranges: read" if outside else "Read") + " the bands as good neighborhoods, not a recipe.")
     with right:
         st.subheader("Features", anchor=False)
         st.pills("Feature groups", list(lab.FEATURE_GROUPS), selection_mode="multi", key="lab_groups",
@@ -108,29 +130,33 @@ if is_optuna:
                "tuned on 2023-2024. Scored on all years it would look better than it is.")
 
 st.subheader("How your model did", anchor=False)
-with st.container(horizontal=True):
-    st.metric("Your model, average error", f"{yours_mae:.2f} points", border=True,
-              delta=f"{yours_mae - champ_mae:+.2f} vs. champion", delta_color="inverse",
-              help="Mean absolute error over every scored park-day: how far a day's prediction typically lands "
-                   "from the measured crowd score (0-100).")
-    st.metric("Champion", f"{champ_mae:.2f} points", border=True)
-    st.metric(f"Best baseline: {base_mae.idxmin().lower()}", f"{base_mae.min():.2f} points", border=True,
-              help="Simple rules any forecast should beat.")
-    st.metric("Training time", f"{seconds:.1f} s", border=True, help="Four models, one per test year, in this app.")
+scores, verdict_col = st.columns(2, gap="large")
+with scores:
+    top, bottom = st.columns(2), st.columns(2)
+    top[0].metric("Your model, average error", f"{yours_mae:.2f} points", border=True, height="stretch",
+                  delta=f"{yours_mae - champ_mae:+.2f} vs. champion", delta_color="inverse",
+                  help="Mean absolute error over every scored park-day: how far a day's prediction typically lands "
+                       "from the measured crowd score (0-100).")
+    top[1].metric("Champion", f"{champ_mae:.2f} points", border=True, height="stretch")
+    bottom[0].metric(f"Best baseline: {base_mae.idxmin().lower()}", f"{base_mae.min():.2f} points", border=True,
+                     height="stretch", help="Simple rules any forecast should beat.")
+    bottom[1].metric("Training time", f"{seconds:.1f} s", border=True, height="stretch",
+                     help="Four models, one per test year, in this app.")
 
-if is_champion:
-    st.info("Change a setting or a feature group and click Retrain and backtest to compare your model with it.",
-            title="These are the champion's settings", icon=":material/tune:")
-else:
-    alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
-    alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
-          title={"better": "Better than the champion", "worse": "Worse than the champion",
-                 "tie": "No real difference"}[outcome],
-          icon={"better": ":material/trending_down:", "worse": ":material/trending_up:",
-                "tie": ":material/balance:"}[outcome])
+with verdict_col:
+    if is_champion:
+        st.info("Change a setting or a feature group and click Retrain and backtest to compare your model with it.",
+                title="These are the champion's settings", icon=":material/tune:")
+    else:
+        alert = {"better": st.success, "worse": st.warning, "tie": st.info}[outcome]
+        alert(f"{sentence} 95% interval for the difference: {boot['lo']:+.2f} to {boot['hi']:+.2f} points a day.",
+              title={"better": "Better than the champion", "worse": "Worse than the champion",
+                     "tie": "No real difference"}[outcome],
+              icon={"better": ":material/trending_down:", "worse": ":material/trending_up:",
+                    "tie": ":material/balance:"}[outcome])
 
-with st.expander("About this test: a paired block bootstrap", icon=":material/science:"):
-    st.markdown(f"""
+    with st.expander("About this test: a paired block bootstrap", icon=":material/science:"):
+        st.markdown(f"""
 **Why it's needed.** Two models' average errors almost never match exactly, so "yours is 0.3 points lower"
 on its own says nothing: a different set of test days could flip it. The question is whether the
 difference is bigger than the luck of the draw.
@@ -148,20 +174,14 @@ so days are resampled in week-long blocks that keep those runs together, and the
 independent of one another. That is the shakiest part, so here is the same interval with longer blocks. If the
 verdict holds as the blocks grow, it doesn't hinge on that assumption.
 """)
-    rows = []
-    for days in (7, 14, 28):
-        b = lab.block_bootstrap(scored, champ_scored, block_days=days)
-        rows.append({"Block length": f"{days} days", "Blocks": b["blocks"], "Difference": b["diff"],
-                     "95% interval, low": b["lo"], "95% interval, high": b["hi"], "Verdict": lab.verdict(b)[0]})
-    st.dataframe(pd.DataFrame(rows), hide_index=True, alt="Bootstrap interval for three block lengths",
-                 column_config={c: st.column_config.NumberColumn(format="%+.2f")
-                                for c in ("Difference", "95% interval, low", "95% interval, high")})
-
-st.subheader("Error by test year", anchor=False)
-st.caption("Lower is better. The two grey lines are the baselines. Every year is a model trained only on earlier days; "
-           "2026 runs through the snapshot date.")
-frame = pd.concat(([] if is_champion else [yours_by_year]) + [champ_by_year, base], ignore_index=True)
-st.altair_chart(viz.mae_by_year(frame), alt="Backtest error by test year for your model, the champion and two baselines")
+        rows = []
+        for days in (7, 14, 28):
+            b = lab.block_bootstrap(scored, champ_scored, block_days=days)
+            rows.append({"Block length": f"{days} days", "Blocks": b["blocks"], "Difference": b["diff"],
+                         "95% interval, low": b["lo"], "95% interval, high": b["hi"], "Verdict": lab.verdict(b)[0]})
+        st.dataframe(pd.DataFrame(rows), hide_index=True, alt="Bootstrap interval for three block lengths",
+                     column_config={c: st.column_config.NumberColumn(format="%+.2f")
+                                    for c in ("Difference", "95% interval, low", "95% interval, high")})
 
 left, right = st.columns([3, 2], gap="large")
 with left:
@@ -191,3 +211,9 @@ with right:
     st.caption("Share of the model's total gain (how much each feature's splits cut the error), averaged over the "
                "four test-year models.")
     st.altair_chart(viz.importance(importance, champion=is_champion), alt="Feature importance for your model")
+
+st.subheader("Error by test year", anchor=False)
+st.caption("Lower is better. The two grey lines are the baselines. Every year is a model trained only on earlier days; "
+           "2026 runs through the snapshot date.")
+frame = pd.concat(([] if is_champion else [yours_by_year]) + [champ_by_year, base], ignore_index=True)
+st.altair_chart(viz.mae_by_year(frame), alt="Backtest error by test year for your model, the champion and two baselines")
