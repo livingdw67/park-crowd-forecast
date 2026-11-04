@@ -4,6 +4,7 @@ Everything runs on the exported snapshot in data/ with the same parks_lib code t
 run: no workspace, no model API, nothing billed per click.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -43,6 +44,9 @@ OPTUNA_PARAMS = {"n_estimators": 860, "learning_rate": 0.0452130149175768, "num_
                  "min_child_samples": 6, "subsample": 0.8788647169098125, "colsample_bytree": 0.6086232578580403,
                  "reg_alpha": 1.0038881495789473, "reg_lambda": 2.446785580104569}
 OBJECTIVES = {"Absolute error (L1)": "regression_l1", "Squared error (L2)": "regression", "Huber": "huber"}
+# Suggested bands on the sliders: the range the best trials of the latest tune-forecast study covered (the
+# Oct 22 study kept only its best trial; the job logs every one, and export_data.py copies them to data/)
+BAND_TRIALS = 10
 
 # Why-this-day explanation: model features grouped the way a reader thinks about a day
 EXPLAIN_GROUPS = {
@@ -81,6 +85,10 @@ def load_forecast():
     return pd.read_parquet(DATA / "forecast.parquet")
 
 
+def load_study():
+    return json.loads((DATA / "optuna_trials.json").read_text(encoding="utf-8"))
+
+
 def day_label(ts, weekday="%a", month="%b", year=False):
     """'Sat Oct 31' (or with the year), without strftime's %-d, which Windows lacks."""
     ts = pd.Timestamp(ts)
@@ -115,6 +123,13 @@ def baselines(df, test_years=TEST_YEARS):
 def mae_by_year(preds):
     return (preds.assign(err=(preds["actual"] - preds["pred"]).abs())
             .groupby("test_year")["err"].mean().rename("mae").reset_index())
+
+
+def suggested_bands(trials, top=BAND_TRIALS):
+    """(low, high) per setting: the range the `top` lowest-error finished trials covered. Pruned trials
+    stopped after one year, so their error isn't comparable and they are left out."""
+    best = sorted((t for t in trials if t["state"] == "complete"), key=lambda t: t["tuning_mae"])[:top]
+    return {k: (min(t["params"][k] for t in best), max(t["params"][k] for t in best)) for k in best[0]["params"]}
 
 
 def verdict(boot):

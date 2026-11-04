@@ -25,6 +25,11 @@ def forecast():
 
 
 @st.cache_data
+def optuna_study():
+    return lab.load_study()
+
+
+@st.cache_data
 def meta():
     return json.loads((lab.DATA / "meta.json").read_text(encoding="utf-8"))
 
