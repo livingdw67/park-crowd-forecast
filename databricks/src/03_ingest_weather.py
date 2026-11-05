@@ -6,6 +6,9 @@
 # MAGIC history back to 2018 and the forecast API the next 16 days. Each day's row is replaced as better
 # MAGIC data arrives, so a forecast day becomes observed once the archive covers it. Days past the
 # MAGIC forecast horizon have no weather row; the model falls back to seasonal averages for those.
+# MAGIC
+# MAGIC The first run loads all history; later runs refetch only the last three months of the archive
+# MAGIC (Open-Meteo counts long date ranges as many calls), so older rows stay as they are.
 
 # COMMAND ----------
 
@@ -17,30 +20,20 @@ table = f"{catalog}.{schema}.raw_weather_daily"
 
 # COMMAND ----------
 
-import json
-import urllib.parse
-import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
-# Universal Orlando Resort
-LATITUDE, LONGITUDE = 28.47, -81.47
-DAILY = ["temperature_2m_max", "temperature_2m_min", "apparent_temperature_max",
-         "precipitation_sum", "precipitation_hours", "weather_code"]
-
-def fetch_daily(base_url, **params):
-    query = urllib.parse.urlencode({
-        "latitude": LATITUDE, "longitude": LONGITUDE, "daily": ",".join(DAILY),
-        "temperature_unit": "fahrenheit", "precipitation_unit": "inch", "timezone": "America/New_York", **params,
-    })
-    with urllib.request.urlopen(f"{base_url}?{query}", timeout=60) as response:
-        return pd.DataFrame(json.loads(response.read())["daily"])
+from parks_lib.weather import ARCHIVE_URL, FORECAST_URL, archive_start, fetch_daily
 
 today = date.today()
-observed = fetch_daily("https://archive-api.open-meteo.com/v1/archive", start_date="2018-01-01", end_date=str(today - timedelta(days=1)))
+last_observed = (spark.sql(f"SELECT max(date) FROM {table} WHERE NOT is_forecast").first()[0]
+                 if spark.catalog.tableExists(table) else None)
+start = archive_start(last_observed, today)
+print(f"Last observed day in the table: {last_observed}; fetching the archive from {start}")
+observed = fetch_daily(ARCHIVE_URL, start_date=str(start), end_date=str(today - timedelta(days=1)))
 observed["is_forecast"] = False
-forecast = fetch_daily("https://api.open-meteo.com/v1/forecast", forecast_days=16)
+forecast = fetch_daily(FORECAST_URL, forecast_days=16)
 forecast["is_forecast"] = True
 
 # Observed wins where both exist; the archive's newest days can be empty while it catches up
