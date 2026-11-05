@@ -45,11 +45,11 @@ injection (3). [run_evals.py](evals/run_evals.py) grades each run without a mode
 - **grounded:** the validator found every number of the answer in tool output
 - **no_error:** the run finished without an error event
 
-The first full run on gpt-5.4-mini passed 29/30 and showed three problems: out-of-range dates
-weren't routed out of scope, the writer couldn't see tool errors, and the validator rejected dates
-the user had typed. After the fixes, the run passed 28/30 under the old validator and 30/30 once
-regraded from the saved turn checkpoints with the fixed one. A run costs about $0.17. Every run is
-kept in [evals/results/](evals/results/).
+The first full run on gpt-5.4-mini passed 29/30 and showed three problems: a question about a date
+past the forecast was routed out of scope instead of answered, the writer couldn't see tool errors,
+and the validator rejected dates the user had typed. After the fixes, the run passed 28/30 under the
+old validator and 30/30 once regraded from the saved turn checkpoints with the fixed one. A run costs
+about $0.17. Every run is kept in [evals/results/](evals/results/).
 
 ## Load test
 
