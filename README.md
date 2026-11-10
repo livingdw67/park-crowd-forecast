@@ -11,19 +11,14 @@ Daily park attendance isn't published (only annual totals), so ride wait times s
 The crowd index is built from them, and the forecast should be read as "how busy relative to
 other days", not a headcount.
 
-## Status
+## What's here
 
-| Phase | What | State |
-|---|---|---|
-| 1a | Hourly wait-time ingest into `workspace.parks.raw_wait_times` | Live since 2026-10-22 |
-| 1b | Crowd calendar history into `workspace.parks.raw_crowd_calendar` (daily, Jul 2018 on) | Live since 2026-10-22 |
-| 1c | `raw_weather_daily` (Open-Meteo) and `calendar_features` (holidays, school breaks, events) | Live since 2026-10-22 |
-| 1d | LightGBM forecast in MLflow / Unity Catalog (`crowd_forecast`), ride-based `daily_crowd_index` | Live since 2026-10-22 |
-| 1e | Staffing optimizer (OR-Tools MILP) planning 14 days from the forecast | Live since 2026-10-22 |
-| 1f | Streamlit app on Databricks Apps: crowd calendar, staffing plan, what-if scenarios | Live since 2026-10-22 |
-| 1g | Epic Universe impact study: difference-in-differences and synthetic control with placebo tests | Live since 2026-10-27 |
-| 2 | Agent that explains forecasts and re-plans staffing, with an AI gateway, streaming API and eval suite ([agent/](agent/)) | Built 2026-10-29; distilling a local writer model in progress |
-| 3 | Public demo app on a frozen snapshot: model lab, crowd explorer, interactive Epic study ([public_app/](public_app/)) | Built 2026-11-02 |
+- **Data:** hourly ride wait times, the daily crowd calendar back to 2018, Open-Meteo weather, and a calendar of holidays, school breaks and events, all as Delta tables on Databricks.
+- **Forecast:** one LightGBM model for all parks, registered in MLflow and Unity Catalog, backtested year by year and scored 90 days ahead every morning, with an Optuna challenger that must beat the champion in a bootstrap test.
+- **Staffing optimizer:** an OR-Tools mixed-integer program that plans 14 days of shifts from the forecast.
+- **Epic Universe impact study:** difference-in-differences and synthetic control with placebo tests.
+- **Apps:** a Streamlit app on Databricks Apps for the workspace, and a public demo on a frozen snapshot where every model is trained in the browser session.
+- **Agent:** explains forecasts and re-plans staffing through an AI gateway, with a streaming API and a 30-question eval suite ([agent/](agent/)).
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs,
 so the agent calls the same code as agent tools.
