@@ -80,13 +80,13 @@ and the student's scores are next.
 
 ## Run it
 
-From the repo root, with the project venv ([../README.md](../README.md#local-development)):
+From the repo root, with the project venv active ([../README.md](../README.md#local-development)):
 
 ```
-.venv\Scripts\python -m pip install -r agent\requirements.txt
+python -m pip install -r agent/requirements.txt
 ```
 
-Settings go in `agent\.env` (git-ignored); each provider is enabled when its setting exists:
+Settings go in `agent/.env` (git-ignored); each provider is enabled when its setting exists:
 
 ```
 OPENAI_API_KEY=...
@@ -101,20 +101,22 @@ git-ignored because it holds queue-times data):
 
 ```
 databricks auth login --host <your workspace URL> --profile free
-.venv\Scripts\python agent\scripts\export_snapshot.py
+python agent/scripts/export_snapshot.py
 ```
 
 Ask a question, run the service, or run the evals:
 
 ```
-.venv\Scripts\python agent\scripts\ask.py "How busy is Islands of Adventure on Saturday?"
-.venv\Scripts\python -m uvicorn park_agent.api:app --app-dir agent --port 8000
-.venv\Scripts\python agent\evals\run_evals.py --max-usd 0.50
+python agent/scripts/ask.py "How busy is Islands of Adventure on Saturday?"
+python -m uvicorn park_agent.api:app --app-dir agent --port 8000
+python agent/evals/run_evals.py --max-usd 0.50
 ```
 
 Tests (25, no network or API keys needed):
 
 ```
 cd agent
-..\.venv\Scripts\python -m pytest -q tests
+python -m pytest -q tests
 ```
+
+They also run on every push and pull request ([tests.yml](../.github/workflows/tests.yml)).

@@ -1,5 +1,7 @@
 # Park Crowd Forecast
 
+[![tests](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/tests.yml/badge.svg)](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/tests.yml)
+
 Forecasts daily crowd levels at the Universal Orlando parks and turns the forecast into a staffing
 plan. Built on Databricks (Delta tables, Unity Catalog, MLflow) with a Streamlit front end, plus an
 agent that answers questions about the forecast and staffing plans from the same data and optimizer.
@@ -249,12 +251,13 @@ GRANT USE CATALOG ON CATALOG workspace TO `<client id>`;
 GRANT USE SCHEMA, SELECT ON SCHEMA workspace.parks TO `<client id>`;
 ```
 
-Run it locally against the workspace, from `databricks/` so the theme in `.streamlit/` applies:
+Run it locally against the workspace, from `databricks/` so the theme in `.streamlit/` applies, with the
+project venv active ([Local development](#local-development)):
 
 ```
-set DATABRICKS_CONFIG_PROFILE=free
-set DATABRICKS_WAREHOUSE_ID=<warehouse id>
-..\.venv\Scripts\streamlit run app/streamlit_app.py
+export DATABRICKS_CONFIG_PROFILE=free           # Windows: set DATABRICKS_CONFIG_PROFILE=free
+export DATABRICKS_WAREHOUSE_ID=<warehouse id>   # Windows: set DATABRICKS_WAREHOUSE_ID=<warehouse id>
+streamlit run app/streamlit_app.py
 ```
 
 `ortools==9.11` needs protobuf 5.26, so the app pins `databricks-sdk==0.72.0`, the newest release
@@ -295,11 +298,11 @@ clicking costs nothing.
   before period, or fake the opening a year early, and the estimate, placebo test and weights update.
 
 ```
-.venv\Scripts\python -m pip install -r public_app\requirements.txt
-.venv\Scripts\streamlit run public_app\streamlit_app.py
+python -m pip install -r public_app/requirements.txt
+streamlit run public_app/streamlit_app.py
 ```
 
-Refresh the snapshot with `.venv\Scripts\python public_app\scripts\export_data.py` (needs the
+Refresh the snapshot with `python public_app/scripts/export_data.py` (needs the
 Databricks CLI login); pushing it to `main` redeploys the hosted app. It runs on Streamlit Community Cloud
 from this repo with `public_app/streamlit_app.py` as the main file and Python 3.11.
 
@@ -307,9 +310,12 @@ from this repo with `public_app/streamlit_app.py` as the main file and Python 3.
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -q tests
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+python -m pip install -r requirements-dev.txt
+python -m pytest -q tests
 ```
+
+Both test suites run on every push and pull request ([tests.yml](.github/workflows/tests.yml)).
 
 The agent has its own requirements and tests; see [agent/README.md](agent/README.md#run-it).
 
