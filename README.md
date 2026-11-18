@@ -22,7 +22,7 @@ other days", not a headcount.
 - **Epic Universe impact study:** difference-in-differences and synthetic control with placebo tests.
 - **Apps:** a Streamlit app on Databricks Apps for the workspace, and a public demo on a frozen snapshot where every model is trained in the browser session.
 - **Agent:** explains forecasts and re-plans staffing through an AI gateway, with a streaming API and a 30-question eval suite ([agent/](agent/)).
-- **Operations:** failure emails and timeouts on the jobs, a daily watchdog outside Databricks that opens a GitHub issue when a job stops or a table goes stale, and a deploy after every merge ([Operations](#operations)).
+- **Operations:** failure emails and timeouts on the jobs, a daily watchdog outside Databricks that opens a GitHub issue when a job stops or a table goes stale, a deploy after every merge, and a daily monitor that scores past forecasts, measures drift and starts a retune when the model slips ([Operations](#operations)).
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs,
 so the agent calls the same code as agent tools.
@@ -110,7 +110,7 @@ What this says:
 into `crowd_forecast` (latest) and `crowd_forecast_history` (every run, for tracking accuracy later),
 next to queue-times' own forecast where they publish one.
 
-**Tuning.** `tune-forecast` (on demand, [10_tune_forecast.py](databricks/src/10_tune_forecast.py)) runs an
+**Tuning.** `tune-forecast` (started by hand or by the [daily monitor](#monitoring-the-forecast-and-retuning-it), [10_tune_forecast.py](databricks/src/10_tune_forecast.py)) runs an
 Optuna search over LightGBM's settings and the calendar feature groups, scored on 2023-2024 only, with each
 trial a nested MLflow run and weak trials stopped after their first year. It then looks once at 2025 onward,
 which the search never saw, against the settings production uses, and registers the refit as
@@ -364,6 +364,7 @@ What keeps the pipeline running, and how you find out when it isn't:
   - Has the scheduler itself started a run within that limit? This separates "stopped" from "failing", and a
     manual rerun doesn't hide a stopped scheduler.
   - Are the tables fresh, and did the wait-time ingest write a normal day's volume (at least half the 14-day median)?
+  - Has the forecast monitor (below) asked for a person?
 
   A problem opens an issue labeled `watchdog` (or comments on the open one) and fails the run, so GitHub emails
   about it. The next clean run closes the issue. Run on the November outage, it reported four jobs not firing, the
@@ -371,6 +372,43 @@ What keeps the pipeline running, and how you find out when it isn't:
 - **Deploy on merge** ([deploy.yml](.github/workflows/deploy.yml)). After the tests pass on `main`, the bundle is
   deployed, so a merged fix can't sit undeployed. (The Open-Meteo rate-limit fix did, for 13 days, while
   `daily-features` kept failing on HTTP 429.)
+
+### Monitoring the forecast and retuning it
+
+The pipeline running doesn't mean the forecast is still good. A daily monitor checks that, and starts a retune when
+it isn't ([12_monitor.py](databricks/src/12_monitor.py); the rules, with why, plain meaning and assumptions, are in
+[parks_lib/monitoring.py](databricks/src/parks_lib/monitoring.py)):
+
+- **Live accuracy.** Every past forecast in `crowd_forecast_history` is scored against the measured crowd, for
+  forecasts 0-14 and 15-90 days ahead. The 28-day error is compared with a band: the 5th to 95th percentile of
+  28-day errors in a **production-like replay** ([11_replay_forecast.py](databricks/src/11_replay_forecast.py),
+  weekly). The replay refits every Monday and forecasts the next 90 days, like production, over the two years ending
+  90 days back. A yearly backtest would be the wrong yardstick: a model fit once a year is staler than one refit
+  weekly, so its errors run larger and live errors would never look bad next to them.
+- **Drift by month (PSI).** The model's errors against the replay's, and the crowd level against the same month in the
+  three years before. The textbook 0.1 / 0.2 lines assume big samples, and a month is about 100 park-days, so each
+  threshold is calibrated by resampling whole weeks of past months. The thresholds came out between 1 and 1.3.
+- **Retune triggers.** `tune-forecast` starts when one of these fires:
+  - The 28-day error stays above the band for 14 days in a row.
+  - The model-error PSI crosses its threshold.
+  - 90 days have passed since the last tuning run.
+
+  Promotion still needs the bootstrap win. Only evidence after the last tuning run counts, and at most one run starts
+  every 14 days. If an automatic retune for a problem finds no reliable gain and the problem returns, settings can't
+  fix it (a new park, a closure, a missing feature). The monitor then stops and logs "needs a person", which the
+  watchdog turns into an issue. Every decision is appended to `retune_log`.
+
+**Replayed on 2019-2026** ([ops/replay_triggers.py](ops/replay_triggers.py), results in
+[ops/replay_results.md](ops/replay_results.md)):
+- The error trigger would have fired five times: July 2020 (the reopening), March and September 2021, June 7, 2025
+  (16 days after Epic Universe opened) and March 2026. It never fired in 2022-2024.
+- Model-error drift was flagged in June 2020 and August 2021.
+
+The rules were set on this replay, so it shows they behave sensibly rather than proving they're tuned for the
+future.
+
+**Live so far (Oct 22 to Nov 12, 2026):** forecasts made 0-14 days ahead missed by 17.2 points on average, inside the
+band (up to 21.3). Queue-Times' own forecast missed by 15.2 on the days it covered.
 
 Both workflows need two repository secrets: `DATABRICKS_HOST` (the workspace URL) and `DATABRICKS_TOKEN` (a personal
 access token). When the token expires, the watchdog reports an HTTP 403 rather than going quiet. Run the

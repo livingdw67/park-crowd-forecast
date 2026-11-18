@@ -13,7 +13,8 @@
 # MAGIC    Every run is appended to `forecast_settings`; the weekly `train-forecast` job retrains with the
 # MAGIC    latest promoted settings, so a promotion survives Monday's retrain.
 # MAGIC
-# MAGIC Runs on demand (the `tune-forecast` job has no schedule). The first study (2026-10-22, 100 trials, an
+# MAGIC Runs on demand (the `tune-forecast` job has no schedule): by hand, or started by the daily monitor (12)
+# MAGIC when a retune trigger fires, which passes the trigger's name as `trigger`. The first study (2026-10-22, 100 trials, an
 # MAGIC Assistant notebook) found no reliable gain: -0.11 points, interval -0.42 to +0.18.
 
 # COMMAND ----------
@@ -26,6 +27,7 @@ dbutils.widgets.text("catalog", "workspace")
 dbutils.widgets.text("schema", "parks")
 dbutils.widgets.text("n_trials", "60")
 dbutils.widgets.text("timeout_minutes", "30")
+dbutils.widgets.text("trigger", "manual")   # what started this run: manual, or the monitor's error / drift / backstop
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 n_trials = int(dbutils.widgets.get("n_trials"))
@@ -135,6 +137,7 @@ row = pd.DataFrame([{
     "tuning_mae": float(study.best_value), "holdout_mae": mae["tuned"], "production_holdout_mae": mae["production"],
     "holdout_diff": boot["diff"], "holdout_ci_low": boot["lo"], "holdout_ci_high": boot["hi"],
     "production_settings": prod_source, "promoted": promote, "reason": reason,
+    "trigger": dbutils.widgets.get("trigger"),
 }])
-spark.createDataFrame(row).write.mode("append").saveAsTable(settings_table)
+spark.createDataFrame(row).write.mode("append").option("mergeSchema", "true").saveAsTable(settings_table)
 print(f"Registered {model_name} v{version} as challenger; {'promoted to' if promote else 'not'} champion: {reason}")

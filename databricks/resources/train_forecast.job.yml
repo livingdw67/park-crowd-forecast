@@ -2,13 +2,14 @@ resources:
   jobs:
     train_forecast:
       name: train-forecast
-      # Weekly retrain (Monday 7am Eastern), then a fresh score with the new champion.
+      # Weekly retrain (Monday 7am Eastern), then a fresh score with the new champion, then the
+      # production-like replay the daily monitor measures live accuracy against (src/11_replay_forecast.py).
       # Daily scoring runs in daily-features.
       schedule:
         quartz_cron_expression: "0 0 7 ? * MON"
         timezone_id: America/New_York
         pause_status: UNPAUSED
-      timeout_seconds: 1800   # typical run 2-3 min
+      timeout_seconds: 2700   # typical run 2-3 min, plus the replay's ~170 fits
       email_notifications:
         on_failure: ["${workspace.current_user.userName}"]   # resolved at deploy, so no address in the repo
       parameters:
@@ -24,3 +25,7 @@ resources:
           depends_on: [{ task_key: train }]
           notebook_task:
             notebook_path: ../src/06_score_forecast.py
+        - task_key: replay
+          depends_on: [{ task_key: score }]
+          notebook_task:
+            notebook_path: ../src/11_replay_forecast.py

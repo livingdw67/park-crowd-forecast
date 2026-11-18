@@ -17,6 +17,8 @@ resources:
           default: "60"
         - name: timeout_minutes
           default: "30"
+        - name: trigger
+          default: manual   # the daily monitor passes error, drift or backstop when it starts a run
       tasks:
         - task_key: tune
           notebook_task:
