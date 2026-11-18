@@ -9,6 +9,9 @@ resources:
         quartz_cron_expression: "0 30 6 * * ?"
         timezone_id: America/New_York
         pause_status: UNPAUSED
+      timeout_seconds: 1800   # typical run 2 min
+      email_notifications:
+        on_failure: ["${workspace.current_user.userName}"]   # resolved at deploy, so no address in the repo
       parameters:
         - name: catalog
           default: ${var.catalog}

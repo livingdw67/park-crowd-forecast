@@ -1,0 +1,62 @@
+name: pipeline watchdog
+
+# Checks the Databricks jobs and tables once a day from outside Databricks (ops/watchdog.py), so it still
+# fires when the Databricks scheduler doesn't. A problem opens an issue labeled `watchdog` (or comments
+# on the open one) and fails the run, which makes GitHub email the repo owner. The next clean run closes
+# the issue. GitHub disables scheduled workflows after 60 days without repository activity.
+#
+# Secrets: DATABRICKS_HOST (the workspace URL) and DATABRICKS_TOKEN (a personal access token; when it
+# expires, the watchdog reports an HTTP 403 rather than going quiet).
+
+on:
+  schedule:
+    - cron: "30 15 * * *"   # 10:30am EST / 11:30am EDT: after the 6:00 and 6:30 daily jobs and the first hourly ingests
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: watchdog
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - id: watchdog
+        continue-on-error: true
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: python ops/watchdog.py --report report.md
+
+      - name: Open or update the watchdog issue
+        if: steps.watchdog.outcome == 'failure'
+        run: |
+          gh label create watchdog --color B60205 --description "Opened by the pipeline watchdog" --force
+          issue=$(gh issue list --label watchdog --state open --json number --jq '.[0].number')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file report.md
+          else
+            gh issue create --label watchdog --title "Pipeline watchdog: problems since $(date -u +%F)" --body-file report.md
+          fi
+
+      - name: Close the watchdog issue once everything passes
+        if: steps.watchdog.outcome == 'success'
+        run: |
+          for issue in $(gh issue list --label watchdog --state open --json number --jq '.[].number'); do
+            gh issue close "$issue" --comment "$(printf 'Healthy again.\n\n'; cat report.md)"
+          done
+
+      - name: Fail the run so GitHub sends an email
+        if: steps.watchdog.outcome == 'failure'
+        run: exit 1
