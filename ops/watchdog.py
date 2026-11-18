@@ -8,6 +8,8 @@ this runs once a day on GitHub Actions (.github/workflows/watchdog.yml) and asks
    The second question separates "the scheduler stopped" from "the runs are failing".
 2. Tables. Freshness (the newest load stamp in each table) and volume (wait-time rows in the last
    24 hours against a normal day), because a job can succeed and still write nothing.
+3. The forecast monitor's latest decision (retune_log). If an automatic retune didn't help and the problem
+   came back, the monitor stops retuning and asks for a person; this check turns that into an issue.
 
 Any problem exits 1; the workflow then opens or comments on a GitHub issue. The issue is public, so the
 report leaves out the workspace URL and development mode's "[dev user]" name prefix.
@@ -49,7 +51,10 @@ TABLE_LIMITS_H = {
     "raw_crowd_calendar": ("scraped_at", 26),
     "raw_weather_daily": ("fetched_at", 26),
     "crowd_forecast": ("scored_at", 26),
+    "forecast_replay": ("replayed_at", 7 * 24 + 2),   # weekly, after train-forecast
 }
+# The daily monitor (src/12_monitor.py) appends one decision a day to this table.
+RETUNE_LOG, MONITOR_LIMIT_H = "retune_log", 26
 
 # Wait-time rows fetched in the last 24 hours must reach this share of a normal day: the median of the
 # previous 14 days that had any rows. Days with none are left out, so an outage doesn't lower the bar.
@@ -130,12 +135,30 @@ def check_volume(last_24h, normal_day) -> Check:
     return Check(label, "ok" if share >= MIN_VOLUME_SHARE else "low", detail)
 
 
-def freshness_sql(catalog: str = CATALOG, schema: str = SCHEMA) -> str:
-    return " UNION ALL ".join(
-        f"SELECT '{table}' AS tbl, CAST(max({column}) AS STRING) AS latest, "
-        f"timestampdiff(MINUTE, max({column}), current_timestamp()) / 60.0 AS age_h "
-        f"FROM {catalog}.{schema}.{table}"
-        for table, (column, _) in TABLE_LIMITS_H.items())
+def check_retune(rows) -> Check:
+    """The monitor's latest decision: [action, reason, hours since]. It asks for a person when an automatic
+    retune didn't help and the problem came back."""
+    label = "monitor `retune_log`"
+    if not rows:
+        return Check(label, "empty", "the monitor hasn't logged a decision yet")
+    action, reason, age_h = rows[0]
+    if float(age_h) > MONITOR_LIMIT_H:
+        return Check(label, "stale", f"last decision {fmt_age(float(age_h))} ago (limit {MONITOR_LIMIT_H}h)")
+    if action == "needs a person":
+        return Check(label, "needs a person", reason)
+    return Check(label, "ok", f"{action} ({fmt_age(float(age_h))} ago)" + (f": {reason}" if action != "none" else ""))
+
+
+def freshness_sql(table: str, catalog: str = CATALOG, schema: str = SCHEMA) -> str:
+    column = TABLE_LIMITS_H[table][0]
+    return (f"SELECT '{table}' AS tbl, CAST(max({column}) AS STRING) AS latest, "
+            f"timestampdiff(MINUTE, max({column}), current_timestamp()) / 60.0 AS age_h "
+            f"FROM {catalog}.{schema}.{table}")
+
+
+def retune_sql(catalog: str = CATALOG, schema: str = SCHEMA) -> str:
+    return (f"SELECT action, reason, timestampdiff(MINUTE, checked_at, current_timestamp()) / 60.0 AS age_h "
+            f"FROM {catalog}.{schema}.{RETUNE_LOG} ORDER BY checked_at DESC LIMIT 1")
 
 
 def volume_sql(catalog: str = CATALOG, schema: str = SCHEMA) -> str:
@@ -211,10 +234,14 @@ def job_checks(db: Databricks, now: datetime) -> list[Check]:
 
 
 def table_checks(db: Databricks) -> list[Check]:
+    """One statement per table, so a missing or broken table is reported on its own line."""
     warehouse = db.warehouse_id()
-    checks = check_freshness(db.sql(freshness_sql(), warehouse))
-    rows = db.sql(volume_sql(), warehouse)
-    return checks + [check_volume(*rows[0]) if rows else check_volume(0, None)]
+    checks = []
+    for table in TABLE_LIMITS_H:
+        checks += safely(f"table {table}", lambda t=table: check_freshness(db.sql(freshness_sql(t), warehouse)))
+    checks += safely("volume", lambda: [check_volume(*(db.sql(volume_sql(), warehouse) or [[0, None]])[0])])
+    checks += safely("monitor", lambda: [check_retune(db.sql(retune_sql(), warehouse))])
+    return checks
 
 
 def safely(area: str, run) -> list[Check]:

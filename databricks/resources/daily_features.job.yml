@@ -4,7 +4,8 @@ resources:
       name: daily-features
       # Daily at 6:30am Eastern, after the crowd calendar refresh: weather history + 16-day forecast,
       # the calendar features (cheap to rebuild in full) and the ride-based crowd index, then the next
-      # 90 days of forecasts from the champion model.
+      # 90 days of forecasts from the champion model. Last, the monitor scores past forecasts and may
+      # start tune-forecast (src/12_monitor.py).
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"
         timezone_id: America/New_York
@@ -17,6 +18,10 @@ resources:
           default: ${var.catalog}
         - name: schema
           default: ${var.schema}
+        - name: tune_job_id
+          default: ${resources.jobs.tune_forecast.id}
+        - name: auto_retune
+          default: ${var.auto_retune}
       tasks:
         - task_key: weather
           notebook_task:
@@ -35,3 +40,9 @@ resources:
           depends_on: [{ task_key: score }]
           notebook_task:
             notebook_path: ../src/08_plan_staffing.py
+        - task_key: monitor
+          # Runs even when scoring failed: the monitor reads past forecasts, and a bad day is when it matters
+          depends_on: [{ task_key: score }, { task_key: crowd_index }]
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: ../src/12_monitor.py
