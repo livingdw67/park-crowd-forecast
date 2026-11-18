@@ -1,6 +1,7 @@
 # Park Crowd Forecast
 
 [![tests](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/tests.yml/badge.svg)](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/tests.yml)
+[![pipeline watchdog](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/watchdog.yml/badge.svg)](https://github.com/livingdw67/park-crowd-forecast/actions/workflows/watchdog.yml)
 
 Forecasts daily crowd levels at the Universal Orlando parks and turns the forecast into a staffing
 plan. Built on Databricks (Delta tables, Unity Catalog, MLflow) with a Streamlit front end, plus an
@@ -21,6 +22,7 @@ other days", not a headcount.
 - **Epic Universe impact study:** difference-in-differences and synthetic control with placebo tests.
 - **Apps:** a Streamlit app on Databricks Apps for the workspace, and a public demo on a frozen snapshot where every model is trained in the browser session.
 - **Agent:** explains forecasts and re-plans staffing through an AI gateway, with a streaming API and a 30-question eval suite ([agent/](agent/)).
+- **Operations:** failure emails and timeouts on the jobs, a daily watchdog outside Databricks that opens a GitHub issue when a job stops or a table goes stale, and a deploy after every merge ([Operations](#operations)).
 
 Forecast, scenario and optimizer code is written as plain functions with clear inputs and outputs,
 so the agent calls the same code as agent tools.
@@ -346,6 +348,33 @@ own; that history was fetched from a laptop and copied into the volume to save F
 
 The `wait-time-ingest` job runs hourly 8am-10pm Eastern. Each run saves the raw JSON to the
 `raw_files` volume and merges parsed rows into `raw_wait_times`, keyed on ride and `last_updated`.
+
+## Operations
+
+What keeps the pipeline running, and how you find out when it isn't:
+
+- **Failure emails.** The daily and weekly jobs email the deploying user when a run fails or exceeds its timeout
+  (each job has one, a few times its typical run). The hourly wait-time ingest has no email, so an outage
+  doesn't send one an hour; the watchdog reports it once a day instead.
+- **Watchdog outside Databricks** ([ops/watchdog.py](ops/watchdog.py), [watchdog.yml](.github/workflows/watchdog.yml)).
+  A check inside Databricks can't report a scheduler that has stopped, since it stops with it. In November 2026 no
+  job ran for five days while every schedule still read UNPAUSED. So a GitHub Actions job asks the Databricks REST
+  API once a day (10:30am Eastern):
+  - Has each scheduled job succeeded within its limit?
+  - Has the scheduler itself started a run within that limit? This separates "stopped" from "failing", and a
+    manual rerun doesn't hide a stopped scheduler.
+  - Are the tables fresh, and did the wait-time ingest write a normal day's volume (at least half the 14-day median)?
+
+  A problem opens an issue labeled `watchdog` (or comments on the open one) and fails the run, so GitHub emails
+  about it. The next clean run closes the issue. Run on the November outage, it reported four jobs not firing, the
+  crowd calendar 5 days stale and wait-time volume at 8% of a normal day.
+- **Deploy on merge** ([deploy.yml](.github/workflows/deploy.yml)). After the tests pass on `main`, the bundle is
+  deployed, so a merged fix can't sit undeployed. (The Open-Meteo rate-limit fix did, for 13 days, while
+  `daily-features` kept failing on HTTP 429.)
+
+Both workflows need two repository secrets: `DATABRICKS_HOST` (the workspace URL) and `DATABRICKS_TOKEN` (a personal
+access token). When the token expires, the watchdog reports an HTTP 403 rather than going quiet. Run the
+watchdog locally with the same two variables set: `python ops/watchdog.py`.
 
 ## License
 

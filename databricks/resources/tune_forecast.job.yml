@@ -5,6 +5,9 @@ resources:
       # On demand only (no schedule; Free Edition's daily compute quota): an Optuna search, one look at
       # the holdout, and a promotion to champion only on a reliable gain. See src/10_tune_forecast.py.
       #   databricks bundle run tune_forecast --profile free
+      timeout_seconds: 5400   # Optuna's own budget is timeout_minutes (30), plus the refit and holdout
+      email_notifications:
+        on_failure: ["${workspace.current_user.userName}"]   # resolved at deploy, so no address in the repo
       parameters:
         - name: catalog
           default: ${var.catalog}

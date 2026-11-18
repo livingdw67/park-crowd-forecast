@@ -9,6 +9,9 @@ resources:
         quartz_cron_expression: "0 0 8-22 * * ?"
         timezone_id: America/New_York
         pause_status: UNPAUSED
+      timeout_seconds: 900   # typical run 1 min
+      # No failure email: an hourly job would send one an hour through an outage. The watchdog
+      # (ops/watchdog.py) reports it once a day instead.
       parameters:
         - name: catalog
           default: ${var.catalog}

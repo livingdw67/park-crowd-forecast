@@ -1,0 +1,37 @@
+name: deploy bundle
+
+# Deploys the Databricks bundle after the tests pass on main, so a merge goes live without anyone having
+# to remember `databricks bundle deploy` (PR #9's weather fix sat merged and undeployed for 13 days while
+# the job it fixed kept failing). Deploying is idempotent: when databricks/ hasn't changed, nothing does.
+# Uses the same secrets as the watchdog.
+
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy-bundle
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: databricks
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}   # the commit the tests passed on
+      - uses: databricks/setup-cli@v1.22.1   # the CLI version used locally
+      - run: databricks bundle validate
+      - run: databricks bundle deploy
